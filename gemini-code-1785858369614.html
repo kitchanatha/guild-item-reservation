@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Guild Item Reservation</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #121212; color: #fff; padding: 20px; }
+        .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-top: 20px; }
+        .card { background: #1e1e1e; padding: 15px; border-radius: 8px; border: 1px solid #333; }
+        .btn { background: #28a745; color: white; border: none; padding: 10px 15px; cursor: pointer; border-radius: 4px; }
+        .btn:disabled { background: #dc3545; cursor: not-allowed; }
+        .pagination { margin-top: 20px; display: flex; gap: 5px; flex-wrap: wrap; }
+        .page-btn { padding: 5px 10px; background: #333; color: white; border: none; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+    <h1>📦 Guild Item Reservation (25 Pages × 4 Items)</h1>
+    <h3 id="page-title">Page 1</h3>
+
+    <div id="item-grid" class="grid"></div>
+    <div id="pagination" class="pagination"></div>
+
+    <script>
+        const TOTAL_PAGES = 25;
+        const ITEMS_PER_PAGE = 4;
+        let currentPage = 1;
+
+        // Load stored claims from local storage (or replace with Google Sheet API)
+        let claims = JSON.parse(localStorage.getItem('guild_claims')) || {};
+
+        function renderPage(page) {
+            currentPage = page;
+            document.getElementById('page-title').innerText = `Page ${page}`;
+            const grid = document.getElementById('item-grid');
+            grid.innerHTML = '';
+
+            for (let i = 1; i <= ITEMS_PER_PAGE; i++) {
+                let itemId = `P${page}_I${i}`;
+                let isClaimed = claims[itemId];
+
+                let card = document.createElement('div');
+                card.className = 'card';
+                card.innerHTML = `
+                    <h4>Item #${i} (Page ${page})</h4>
+                    <p>Status: <strong>${isClaimed ? '🔴 CLAIMED BY ' + isClaimed : '🟢 AVAILABLE'}</strong></p>
+                    ${!isClaimed ? `
+                        <input type="text" id="input_${itemId}" placeholder="Enter IGN">
+                        <button class="btn" onclick="claimItem('${itemId}')">Claim (FCFS)</button>
+                    ` : `<button class="btn" disabled>Claimed</button>`}
+                `;
+                grid.appendChild(card);
+            }
+        }
+
+        function claimItem(itemId) {
+            let ign = document.getElementById(`input_${itemId}`).value.trim();
+            if (!ign) return alert("Please enter your IGN!");
+            
+            claims[itemId] = ign;
+            localStorage.setItem('guild_claims', JSON.stringify(claims));
+            renderPage(currentPage);
+        }
+
+        // Render Pagination Buttons
+        const pagContainer = document.getElementById('pagination');
+        for (let p = 1; p <= TOTAL_PAGES; p++) {
+            let btn = document.createElement('button');
+            btn.className = 'page-btn';
+            btn.innerText = p;
+            btn.onclick = () => renderPage(p);
+            pagContainer.appendChild(btn);
+        }
+
+        renderPage(1);
+    </script>
+</body>
+</html>
