@@ -81,7 +81,7 @@ function loadSupabaseConfig() {
   if (keyInp) keyInp.value = key || '';
 }
 
-window.saveSupabaseConfig = async function() {
+async function saveSupabaseConfig() {
   const url = getEl('supabase-url').value.trim();
   const key = getEl('supabase-key').value.trim();
   
@@ -90,7 +90,8 @@ window.saveSupabaseConfig = async function() {
   
   alert("Settings saved. Reconnecting...");
   location.reload();
-};
+}
+window.saveSupabaseConfig = saveSupabaseConfig;
 
 async function connectSupabase() {
   const url = safeGet('sb_url');
@@ -144,11 +145,14 @@ async function persistReservation(itemId, ign) {
     const { error } = await supabase
       .from('reservations')
       .upsert({ item_id: itemId, ign: ign });
-    if (error) alert("Sync failed: " + error.message);
-  } else {
-    reservations[itemId] = ign;
-    safeSet('guild_claims', JSON.stringify(reservations));
+    if (error) {
+      alert("Sync failed: " + error.message);
+      return false;
+    }
   }
+  reservations[itemId] = ign;
+  safeSet('guild_claims', JSON.stringify(reservations));
+  return true;
 }
 
 async function deleteReservation(itemId) {
@@ -157,25 +161,30 @@ async function deleteReservation(itemId) {
       .from('reservations')
       .delete()
       .eq('item_id', itemId);
-    if (error) alert("Sync failed: " + error.message);
-  } else {
-    delete reservations[itemId];
-    safeSet('guild_claims', JSON.stringify(reservations));
+    if (error) {
+      alert("Sync failed: " + error.message);
+      return false;
+    }
   }
+  delete reservations[itemId];
+  safeSet('guild_claims', JSON.stringify(reservations));
+  return true;
 }
 
 async function clearAllReservations() {
   if (syncEnabled && supabase) {
-    // Supabase delete all (requires a filter, so we use not null on item_id)
     const { error } = await supabase
       .from('reservations')
       .delete()
       .neq('item_id', 0); 
-    if (error) alert("Sync failed: " + error.message);
-  } else {
-    reservations = {};
-    localStorage.removeItem('guild_claims');
+    if (error) {
+      alert("Sync failed: " + error.message);
+      return false;
+    }
   }
+  reservations = {};
+  localStorage.removeItem('guild_claims');
+  return true;
 }
 
 // --- UI Logic ---
@@ -224,20 +233,22 @@ function renderItems() {
   if (indicator) indicator.textContent = `Page ${currentPage} of ${TOTAL_PAGES}`;
 }
 
-window.changePage = function(delta) {
+function changePage(delta) {
   const newPage = currentPage + delta;
   if (newPage >= 1 && newPage <= TOTAL_PAGES) {
     currentPage = newPage;
     renderItems();
   }
-};
+}
+window.changePage = changePage;
 
-window.saveGlobalIGN = function() {
+function saveGlobalIGN() {
   const input = getEl('global-ign');
   if (input) safeSet('guild_ign', input.value.trim());
-};
+}
+window.saveGlobalIGN = saveGlobalIGN;
 
-window.claimItem = async function(itemId) {
+async function claimItem(itemId) {
   const input = getEl('global-ign');
   const ign = input ? input.value.trim() : '';
   
@@ -250,35 +261,38 @@ window.claimItem = async function(itemId) {
     return alert("Please enter your IGN at the top first!");
   }
   
-  await persistReservation(itemId, ign);
-  if (!syncEnabled) {
+  const success = await persistReservation(itemId, ign);
+  if (success) {
     renderItems();
     renderSummary();
   }
-};
+}
+window.claimItem = claimItem;
 
-window.unreserveItem = async function(itemId) {
+async function unreserveItem(itemId) {
   if (confirm(`Are you sure you want to unreserve Item #${itemId}?`)) {
-    await deleteReservation(itemId);
-    if (!syncEnabled) {
+    const success = await deleteReservation(itemId);
+    if (success) {
       renderItems();
       renderSummary();
     }
   }
-};
+}
+window.unreserveItem = unreserveItem;
 
-window.resetReservations = async function() {
+async function resetReservations() {
   if (confirm("⚠️ WARNING: This will clear ALL reservations. Are you sure?")) {
-    await clearAllReservations();
-    if (!syncEnabled) {
+    const success = await clearAllReservations();
+    if (success) {
       renderItems();
       renderSummary();
       alert("All reservations have been reset.");
     }
   }
-};
+}
+window.resetReservations = resetReservations;
 
-window.exportData = function() {
+function exportData() {
   const data = JSON.stringify(reservations, null, 2);
   const blob = new Blob([data], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -287,9 +301,10 @@ window.exportData = function() {
   a.download = `reservations_${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(url);
-};
+}
+window.exportData = exportData;
 
-window.importData = function() {
+function importData() {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = '.json';
@@ -319,7 +334,8 @@ window.importData = function() {
     reader.readAsText(file);
   };
   input.click();
-};
+}
+window.importData = importData;
 
 function renderSummary() {
   const container = getEl('summary-container');
