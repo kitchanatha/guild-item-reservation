@@ -104,6 +104,16 @@ window.unreserveItem = function(itemId) {
     renderSummary();
   }
 };
+ 
+window.resetReservations = function() {
+  if (confirm("⚠️ WARNING: This will clear ALL reservations. Are you sure?")) {
+    reservations = {};
+    localStorage.removeItem('guild_claims');
+    renderItems();
+    renderSummary();
+    alert("All reservations have been reset.");
+  }
+};
 
 function renderSummary() {
   const container = getEl('summary-container');

@@ -156,7 +156,21 @@ button:disabled {
 .unreserve-btn:hover {
   background-color: #c82333;
 }
-
+ 
+.header-actions {
+  margin-bottom: 20px;
+}
+ 
+.reset-btn {
+  background-color: #f0ad4e;
+  color: #121212;
+  font-weight: bold;
+}
+ 
+.reset-btn:hover {
+  background-color: #ec971f;
+}
+ 
 .pagination {
   margin-top: 20px;
   display: flex;
