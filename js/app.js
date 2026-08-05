@@ -130,12 +130,15 @@ function renderSummary() {
   });
 
   const players = Object.keys(playerGroups).sort();
+  
+  let html = '<h2>📊 Reservation Summary</h2>';
+  
   if (players.length === 0) {
-    container.innerHTML = '<p style="text-align: center; color: #888; margin-top: 20px;">No reservations yet.</p>';
+    html += '<p style="text-align: center; color: #888; margin-top: 20px;">No reservations yet. Claim an item to see it here!</p>';
+    container.innerHTML = html;
     return;
   }
 
-  let html = '<h2>📊 Reservation Summary</h2>';
   html += '<div class="summary-grid">';
   players.forEach(player => {
     const items = playerGroups[player];
