@@ -4,6 +4,9 @@ const TOTAL_ITEMS = 100;
 const ITEMS_PER_PAGE = 4;
 const TOTAL_PAGES = Math.ceil(TOTAL_ITEMS / ITEMS_PER_PAGE);
 
+const DEFAULT_SB_URL = 'https://kowsnqqznjgpfsumgsir.supabase.co';
+const DEFAULT_SB_KEY = 'sb_publishable_7UW1aict4fPrLAdrPCLvaQ_4j0acB_J';
+
 let currentPage = 1;
 let reservations = {};
 let supabase = null;
@@ -70,9 +73,17 @@ function updateSyncStatus(mode, msg = '') {
 
 // --- Supabase Integration ---
 
-function loadSupabaseConfig() {
+function getSupabaseConfig() {
   const url = safeGet('sb_url');
   const key = safeGet('sb_key');
+  return {
+    url: url !== null ? url : DEFAULT_SB_URL,
+    key: key !== null ? key : DEFAULT_SB_KEY
+  };
+}
+
+function loadSupabaseConfig() {
+  const { url, key } = getSupabaseConfig();
   syncEnabled = !!(url && key);
   
   const urlInp = getEl('supabase-url');
@@ -94,8 +105,7 @@ async function saveSupabaseConfig() {
 window.saveSupabaseConfig = saveSupabaseConfig;
 
 async function connectSupabase() {
-  const url = safeGet('sb_url');
-  const key = safeGet('sb_key');
+  const { url, key } = getSupabaseConfig();
   
   try {
     supabase = createClient(url, key);
