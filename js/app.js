@@ -1,72 +1,196 @@
+import { createClient } from '@supabase/supabase-js';
+
 const TOTAL_ITEMS = 100;
 const ITEMS_PER_PAGE = 4;
 const TOTAL_PAGES = Math.ceil(TOTAL_ITEMS / ITEMS_PER_PAGE);
 
 let currentPage = 1;
-
-function safeGet(key) {
-  try {
-    return localStorage.getItem(key);
-  } catch (e) {
-    return null;
-  }
-}
-
-function safeSet(key, value) {
-  try {
-    localStorage.setItem(key, value);
-  } catch (e) {
-    console.warn("LocalStorage not available");
-  }
-}
-
-function safeRemove(key) {
-  try {
-    localStorage.removeItem(key);
-  } catch (e) {
-    // ignore
-  }
-}
-
 let reservations = {};
-try {
-  const saved = safeGet('guild_claims');
-  reservations = saved ? JSON.parse(saved) : {};
-} catch (e) {
-  console.error("Error loading reservations:", e);
-  reservations = {};
-}
-let adminClickCount = 0;
+let supabase = null;
+let syncEnabled = false;
 
 function getEl(id) {
   return document.getElementById(id);
 }
 
-function init() {
+// --- Storage Logic ---
+
+function safeGet(key) {
+  try { return localStorage.getItem(key); } catch (e) { return null; }
+}
+
+function safeSet(key, value) {
+  try { localStorage.setItem(key, value); } catch (e) { console.warn("LocalStorage error", e); }
+}
+
+async function init() {
   setupAdminTrigger();
+  loadSupabaseConfig();
+  
   const savedIGN = safeGet('guild_ign') || '';
   const globalInput = getEl('global-ign');
   if (globalInput) globalInput.value = savedIGN;
+  
+  if (syncEnabled) {
+    await connectSupabase();
+  } else {
+    loadLocalData();
+    updateSyncStatus('local');
+  }
   
   renderItems();
   renderSummary();
 }
 
+function loadLocalData() {
+  try {
+    const saved = safeGet('guild_claims');
+    reservations = saved ? JSON.parse(saved) : {};
+  } catch (e) {
+    reservations = {};
+  }
+}
+
+function updateSyncStatus(mode, msg = '') {
+  const statusEl = getEl('sync-status');
+  if (!statusEl) return;
+  
+  statusEl.className = 'sync-status';
+  if (mode === 'online') {
+    statusEl.classList.add('status-online');
+    statusEl.textContent = '● Mode: Cloud Sync (Online)';
+  } else if (mode === 'error') {
+    statusEl.classList.add('status-error');
+    statusEl.textContent = `● Mode: Sync Error (${msg})`;
+  } else {
+    statusEl.classList.add('status-local');
+    statusEl.textContent = '● Mode: Local Storage';
+  }
+}
+
+// --- Supabase Integration ---
+
+function loadSupabaseConfig() {
+  const url = safeGet('sb_url');
+  const key = safeGet('sb_key');
+  syncEnabled = !!(url && key);
+  
+  const urlInp = getEl('supabase-url');
+  const keyInp = getEl('supabase-key');
+  if (urlInp) urlInp.value = url || '';
+  if (keyInp) keyInp.value = key || '';
+}
+
+window.saveSupabaseConfig = async function() {
+  const url = getEl('supabase-url').value.trim();
+  const key = getEl('supabase-key').value.trim();
+  
+  safeSet('sb_url', url);
+  safeSet('sb_key', key);
+  
+  alert("Settings saved. Reconnecting...");
+  location.reload();
+};
+
+async function connectSupabase() {
+  const url = safeGet('sb_url');
+  const key = safeGet('sb_key');
+  
+  try {
+    supabase = createClient(url, key);
+    
+    // Initial fetch
+    const { data, error } = await supabase
+      .from('reservations')
+      .select('*');
+      
+    if (error) throw error;
+    
+    // Convert array to object mapping
+    reservations = {};
+    data.forEach(row => {
+      reservations[row.item_id] = row.ign;
+    });
+    
+    updateSyncStatus('online');
+    
+    // Real-time subscription
+    supabase
+      .channel('schema-db-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, payload => {
+        handleRemoteChange(payload);
+      })
+      .subscribe();
+      
+  } catch (err) {
+    console.error("Supabase connection failed:", err);
+    updateSyncStatus('error', err.message);
+    loadLocalData();
+  }
+}
+
+function handleRemoteChange(payload) {
+  if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+    reservations[payload.new.item_id] = payload.new.ign;
+  } else if (payload.eventType === 'DELETE') {
+    delete reservations[payload.old.item_id];
+  }
+  renderItems();
+  renderSummary();
+}
+
+async function persistReservation(itemId, ign) {
+  if (syncEnabled && supabase) {
+    const { error } = await supabase
+      .from('reservations')
+      .upsert({ item_id: itemId, ign: ign });
+    if (error) alert("Sync failed: " + error.message);
+  } else {
+    reservations[itemId] = ign;
+    safeSet('guild_claims', JSON.stringify(reservations));
+  }
+}
+
+async function deleteReservation(itemId) {
+  if (syncEnabled && supabase) {
+    const { error } = await supabase
+      .from('reservations')
+      .delete()
+      .eq('item_id', itemId);
+    if (error) alert("Sync failed: " + error.message);
+  } else {
+    delete reservations[itemId];
+    safeSet('guild_claims', JSON.stringify(reservations));
+  }
+}
+
+async function clearAllReservations() {
+  if (syncEnabled && supabase) {
+    // Supabase delete all (requires a filter, so we use not null on item_id)
+    const { error } = await supabase
+      .from('reservations')
+      .delete()
+      .neq('item_id', 0); 
+    if (error) alert("Sync failed: " + error.message);
+  } else {
+    reservations = {};
+    localStorage.removeItem('guild_claims');
+  }
+}
+
+// --- UI Logic ---
+
 function setupAdminTrigger() {
+  let adminClickCount = 0;
   const trigger = getEl('admin-trigger');
   if (trigger) {
-    const handleTrigger = (e) => {
+    trigger.addEventListener('click', () => {
       adminClickCount++;
       if (adminClickCount >= 5) {
-        const actions = getEl('admin-actions');
-        if (actions) {
-          actions.classList.toggle('hidden');
-        }
+        getEl('admin-actions')?.classList.toggle('hidden');
         adminClickCount = 0;
       }
-    };
-    
-    trigger.addEventListener('click', handleTrigger);
+    });
   }
 }
 
@@ -100,24 +224,20 @@ function renderItems() {
   if (indicator) indicator.textContent = `Page ${currentPage} of ${TOTAL_PAGES}`;
 }
 
-function changePage(delta) {
+window.changePage = function(delta) {
   const newPage = currentPage + delta;
   if (newPage >= 1 && newPage <= TOTAL_PAGES) {
     currentPage = newPage;
     renderItems();
   }
-}
-window.changePage = changePage;
+};
 
-function saveGlobalIGN() {
+window.saveGlobalIGN = function() {
   const input = getEl('global-ign');
-  if (input) {
-    safeSet('guild_ign', input.value.trim());
-  }
-}
-window.saveGlobalIGN = saveGlobalIGN;
+  if (input) safeSet('guild_ign', input.value.trim());
+};
 
-function claimItem(itemId) {
+window.claimItem = async function(itemId) {
   const input = getEl('global-ign');
   const ign = input ? input.value.trim() : '';
   
@@ -130,35 +250,35 @@ function claimItem(itemId) {
     return alert("Please enter your IGN at the top first!");
   }
   
-  reservations[itemId] = ign;
-  safeSet('guild_claims', JSON.stringify(reservations));
-  renderItems();
-  renderSummary();
-}
-window.claimItem = claimItem;
+  await persistReservation(itemId, ign);
+  if (!syncEnabled) {
+    renderItems();
+    renderSummary();
+  }
+};
 
-function unreserveItem(itemId) {
+window.unreserveItem = async function(itemId) {
   if (confirm(`Are you sure you want to unreserve Item #${itemId}?`)) {
-    delete reservations[itemId];
-    safeSet('guild_claims', JSON.stringify(reservations));
-    renderItems();
-    renderSummary();
+    await deleteReservation(itemId);
+    if (!syncEnabled) {
+      renderItems();
+      renderSummary();
+    }
   }
-}
-window.unreserveItem = unreserveItem;
+};
 
-function resetReservations() {
+window.resetReservations = async function() {
   if (confirm("⚠️ WARNING: This will clear ALL reservations. Are you sure?")) {
-    reservations = {};
-    safeRemove('guild_claims');
-    renderItems();
-    renderSummary();
-    alert("All reservations have been reset.");
+    await clearAllReservations();
+    if (!syncEnabled) {
+      renderItems();
+      renderSummary();
+      alert("All reservations have been reset.");
+    }
   }
-}
-window.resetReservations = resetReservations;
+};
 
-function exportData() {
+window.exportData = function() {
   const data = JSON.stringify(reservations, null, 2);
   const blob = new Blob([data], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -167,35 +287,39 @@ function exportData() {
   a.download = `reservations_${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(url);
-}
-window.exportData = exportData;
+};
 
-function importData() {
+window.importData = function() {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = '.json';
   input.onchange = (e) => {
     const file = e.target.files[0];
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const imported = JSON.parse(event.target.result);
         if (typeof imported === 'object' && imported !== null) {
-          reservations = imported;
-          safeSet('guild_claims', JSON.stringify(reservations));
-          renderItems();
-          renderSummary();
-          alert("Data imported successfully!");
+          if (syncEnabled && supabase) {
+             // Mass import to supabase
+             for (const id in imported) {
+               await persistReservation(id, imported[id]);
+             }
+             alert("Data imported to Cloud!");
+          } else {
+            reservations = imported;
+            safeSet('guild_claims', JSON.stringify(reservations));
+            renderItems();
+            renderSummary();
+            alert("Data imported locally!");
+          }
         }
-      } catch (err) {
-        alert("Invalid JSON file!");
-      }
+      } catch (err) { alert("Invalid JSON file!"); }
     };
     reader.readAsText(file);
   };
   input.click();
-}
-window.importData = importData;
+};
 
 function renderSummary() {
   const container = getEl('summary-container');
@@ -212,8 +336,8 @@ function renderSummary() {
   });
 
   const players = Object.keys(playerGroups).sort();
-  
   container.innerHTML = '';
+  
   const title = document.createElement('h2');
   title.textContent = '📊 Reservation Summary';
   container.appendChild(title);
@@ -234,11 +358,9 @@ function renderSummary() {
     const items = playerGroups[player];
     const card = document.createElement('div');
     card.className = 'summary-card';
-    
     const h3 = document.createElement('h3');
     h3.textContent = `👤 ${player} (${items.length} ${items.length === 1 ? 'item' : 'items'})`;
     card.appendChild(h3);
-    
     const ul = document.createElement('ul');
     items.forEach(item => {
       const li = document.createElement('li');

@@ -24,11 +24,20 @@
       <button class="reset-btn" onclick="resetReservations()">🔄 Reset All Reservations</button>
       <button class="export-btn" onclick="exportData()">📤 Export JSON</button>
       <button class="import-btn" onclick="importData()">📥 Import JSON</button>
+      
+      <div class="supabase-config">
+        <h3>Cloud Sync (Supabase)</h3>
+        <input type="text" id="supabase-url" placeholder="Supabase URL (https://xyz.supabase.co)">
+        <input type="password" id="supabase-key" placeholder="Supabase Anon Key">
+        <button onclick="saveSupabaseConfig()">💾 Save & Connect</button>
+        <p class="hint">Leave empty to use Local Storage</p>
+      </div>
     </div>
 
     <div class="user-settings">
+      <div id="sync-status" class="sync-status status-local">● Mode: Local Storage</div>
       <input type="text" id="global-ign" placeholder="Enter your IGN to claim items" oninput="saveGlobalIGN()">
-      <p class="hint">Click any available item below to claim it! (Saved in this browser)</p>
+      <p class="hint">Click any available item below to claim it!</p>
     </div>
 
     <div id="items-container" class="items-grid">
