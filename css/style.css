@@ -207,9 +207,39 @@ input[type="text"] {
 
 /* Summary Section */
 .summary-section {
-  margin-top: 50px;
-  border-top: 1px solid #333;
-  padding-top: 30px;
+  padding-top: 10px;
+}
+
+.view-nav {
+  margin-bottom: 30px;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.nav-btn {
+  background-color: #333;
+  color: #ccc;
+  border: 1px solid #444;
+  padding: 10px 20px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.3s;
+}
+
+.nav-btn:hover {
+  background-color: #444;
+  color: white;
+}
+
+.nav-btn.active {
+  background-color: #28a745;
+  color: white;
+  border-color: #28a745;
+}
+
+.view-content.hidden {
+  display: none;
 }
 
 .summary-grid {

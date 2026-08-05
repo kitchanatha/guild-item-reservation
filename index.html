@@ -20,14 +20,25 @@
 
   <div class="container">
     <h1>🏠 littleHome Item Reservation</h1>
-    <div id="items-container" class="items-grid">
-      <!-- Items will be injected here by JS -->
+
+    <nav class="view-nav">
+      <button id="btn-items" class="nav-btn active" onclick="showView('items')">Items Grid</button>
+      <button id="btn-summary" class="nav-btn" onclick="showView('summary')">Summary View</button>
+    </nav>
+
+    <div id="view-items" class="view-content">
+      <div id="items-container" class="items-grid">
+        <!-- Items will be injected here by JS -->
+      </div>
+      <div id="pagination" class="pagination">
+        <!-- Pagination will be injected here by JS -->
+      </div>
     </div>
-    <div id="pagination" class="pagination">
-      <!-- Pagination will be injected here by JS -->
-    </div>
-    <div id="summary-container" class="summary-section">
-      <!-- Summary will be injected here by JS -->
+
+    <div id="view-summary" class="view-content hidden">
+      <div id="summary-container" class="summary-section">
+        <!-- Summary will be injected here by JS -->
+      </div>
     </div>
   </div>
 

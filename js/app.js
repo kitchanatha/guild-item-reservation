@@ -5,9 +5,9 @@ const TOTAL_PAGES = Math.ceil(TOTAL_ITEMS / ITEMS_PER_PAGE);
 let currentPage = 1;
 let reservations = JSON.parse(localStorage.getItem('guild_claims')) || {};
 
-const itemsContainer = document.getElementById('items-container');
-const paginationContainer = document.getElementById('pagination');
-const summaryContainer = document.getElementById('summary-container');
+function getEl(id) {
+  return document.getElementById(id);
+}
 
 function init() {
   renderItems();
@@ -16,7 +16,10 @@ function init() {
 }
 
 function renderItems() {
-  itemsContainer.innerHTML = '';
+  const container = getEl('items-container');
+  if (!container) return;
+  container.innerHTML = '';
+  
   const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
   const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, TOTAL_ITEMS);
 
@@ -37,18 +40,20 @@ function renderItems() {
         <button class="unreserve-btn" onclick="unreserveItem(${itemId})">Unreserve</button>
       `}
     `;
-    itemsContainer.appendChild(itemElement);
+    container.appendChild(itemElement);
   }
 }
 
 function renderPagination() {
-  paginationContainer.innerHTML = '';
+  const container = getEl('pagination');
+  if (!container) return;
+  container.innerHTML = '';
   
   // Page info
   const pageInfo = document.createElement('div');
   pageInfo.className = 'page-info';
   pageInfo.innerText = `Page ${currentPage} of ${TOTAL_PAGES}`;
-  paginationContainer.appendChild(pageInfo);
+  container.appendChild(pageInfo);
 
   const navContainer = document.createElement('div');
   navContainer.className = 'pagination-nav';
@@ -69,7 +74,7 @@ function renderPagination() {
   nextBtn.onclick = () => goToPage(currentPage + 1);
   navContainer.appendChild(nextBtn);
 
-  paginationContainer.appendChild(navContainer);
+  container.appendChild(navContainer);
 }
 
 function goToPage(page) {
@@ -78,6 +83,26 @@ function goToPage(page) {
   renderItems();
   renderPagination();
 }
+
+window.showView = function(viewName) {
+  const itemsView = getEl('view-items');
+  const summaryView = getEl('view-summary');
+  const itemsBtn = getEl('btn-items');
+  const summaryBtn = getEl('btn-summary');
+
+  if (viewName === 'items') {
+    itemsView.classList.remove('hidden');
+    summaryView.classList.add('hidden');
+    itemsBtn.classList.add('active');
+    summaryBtn.classList.remove('active');
+  } else {
+    itemsView.classList.add('hidden');
+    summaryView.classList.remove('hidden');
+    itemsBtn.classList.remove('active');
+    summaryBtn.classList.add('active');
+    renderSummary();
+  }
+};
 
 window.claimItem = function(itemId) {
   const input = document.getElementById(`input_${itemId}`);
@@ -100,7 +125,8 @@ window.unreserveItem = function(itemId) {
 };
 
 function renderSummary() {
-  if (!summaryContainer) return;
+  const container = getEl('summary-container');
+  if (!container) return;
   
   const playerGroups = {};
   Object.keys(reservations).forEach(itemId => {
@@ -114,7 +140,7 @@ function renderSummary() {
 
   const players = Object.keys(playerGroups).sort();
   if (players.length === 0) {
-    summaryContainer.innerHTML = '';
+    container.innerHTML = '<p style="text-align: center; color: #888; margin-top: 20px;">No reservations yet.</p>';
     return;
   }
 
@@ -132,7 +158,7 @@ function renderSummary() {
     `;
   });
   html += '</div>';
-  summaryContainer.innerHTML = html;
+  container.innerHTML = html;
 }
 
 init();
