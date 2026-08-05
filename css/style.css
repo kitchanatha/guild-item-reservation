@@ -143,6 +143,8 @@ body {
 .item-status {
   font-size: 0.9em;
   text-align: center;
+  word-break: break-word;
+  max-width: 100%;
 }
 
 button {
@@ -176,14 +178,37 @@ button:disabled {
   margin-bottom: 20px;
 }
  
+.reset-btn, .export-btn, .import-btn {
+  margin: 5px;
+  font-weight: bold;
+}
+
 .reset-btn {
   background-color: #f0ad4e;
   color: #121212;
-  font-weight: bold;
 }
  
 .reset-btn:hover {
   background-color: #ec971f;
+}
+
+.export-btn, .import-btn {
+  background-color: #17a2b8;
+}
+
+.export-btn:hover, .import-btn:hover {
+  background-color: #138496;
+}
+
+.discord-btn {
+  margin-top: 30px;
+  background-color: #5865F2;
+  width: 100%;
+  max-width: 400px;
+}
+
+.discord-btn:hover {
+  background-color: #4752c4;
 }
  
 .user-settings {
