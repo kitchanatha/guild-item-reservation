@@ -4,6 +4,7 @@ const TOTAL_PAGES = Math.ceil(TOTAL_ITEMS / ITEMS_PER_PAGE);
 
 let currentPage = 1;
 let reservations = JSON.parse(localStorage.getItem('guild_claims')) || {};
+let adminClickCount = 0;
 
 function getEl(id) {
   return document.getElementById(id);
@@ -13,6 +14,23 @@ function init() {
   renderItems();
   renderPagination();
   renderSummary();
+  setupAdminTrigger();
+}
+
+function setupAdminTrigger() {
+  const trigger = getEl('admin-trigger');
+  if (trigger) {
+    trigger.onclick = () => {
+      adminClickCount++;
+      if (adminClickCount >= 5) {
+        const actions = getEl('admin-actions');
+        if (actions) {
+          actions.classList.toggle('hidden');
+        }
+        adminClickCount = 0;
+      }
+    };
+  }
 }
 
 function renderItems() {
