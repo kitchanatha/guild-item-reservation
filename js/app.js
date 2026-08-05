@@ -3,7 +3,7 @@ const ITEMS_PER_PAGE = 4;
 const TOTAL_PAGES = Math.ceil(TOTAL_ITEMS / ITEMS_PER_PAGE);
 
 let currentPage = 1;
-let reservations = JSON.parse(localStorage.getItem('guildReservations')) || {};
+let reservations = JSON.parse(localStorage.getItem('guild_claims')) || {};
 
 const itemsContainer = document.getElementById('items-container');
 const paginationContainer = document.getElementById('pagination');
@@ -20,16 +20,20 @@ function renderItems() {
 
   for (let i = startIndex; i < endIndex; i++) {
     const itemId = i + 1;
-    const isReserved = !!reservations[itemId];
+    const claimedBy = reservations[itemId];
+    const isReserved = !!claimedBy;
     
     const itemElement = document.createElement('div');
     itemElement.className = `item-card ${isReserved ? 'reserved' : ''}`;
     itemElement.innerHTML = `
       <h3>Item #${itemId}</h3>
-      <p>Status: <span class="status-text">${isReserved ? 'Reserved' : 'Available'}</span></p>
-      <button onclick="toggleReservation(${itemId})">
-        ${isReserved ? 'Unreserve' : 'Reserve'}
-      </button>
+      <p>Status: <span class="status-text">${isReserved ? '🔴 CLAIMED BY ' + claimedBy : '🟢 AVAILABLE'}</span></p>
+      ${!isReserved ? `
+        <input type="text" id="input_${itemId}" placeholder="Enter IGN">
+        <button onclick="claimItem(${itemId})">Claim (FCFS)</button>
+      ` : `
+        <button class="unreserve-btn" onclick="unreserveItem(${itemId})">Unreserve</button>
+      `}
     `;
     itemsContainer.appendChild(itemElement);
   }
@@ -38,29 +42,32 @@ function renderItems() {
 function renderPagination() {
   paginationContainer.innerHTML = '';
   
+  // Page info
+  const pageInfo = document.createElement('div');
+  pageInfo.className = 'page-info';
+  pageInfo.innerText = `Page ${currentPage} of ${TOTAL_PAGES}`;
+  paginationContainer.appendChild(pageInfo);
+
+  const navContainer = document.createElement('div');
+  navContainer.className = 'pagination-nav';
+  
   // Previous button
   const prevBtn = document.createElement('button');
   prevBtn.innerText = 'Prev';
+  prevBtn.className = 'page-btn';
   prevBtn.disabled = currentPage === 1;
   prevBtn.onclick = () => goToPage(currentPage - 1);
-  paginationContainer.appendChild(prevBtn);
-
-  // Page numbers (showing current and a few around it for brevity if we wanted, 
-  // but the user asked for 25 pages specifically, let's see how it looks)
-  // For 25 pages, we might want to show all or use dots. 
-  // Given "simple website", I'll show current page info and buttons.
-  
-  const pageInfo = document.createElement('span');
-  pageInfo.className = 'page-info';
-  pageInfo.innerText = ` Page ${currentPage} of ${TOTAL_PAGES} `;
-  paginationContainer.appendChild(pageInfo);
+  navContainer.appendChild(prevBtn);
 
   // Next button
   const nextBtn = document.createElement('button');
   nextBtn.innerText = 'Next';
+  nextBtn.className = 'page-btn';
   nextBtn.disabled = currentPage === TOTAL_PAGES;
   nextBtn.onclick = () => goToPage(currentPage + 1);
-  paginationContainer.appendChild(nextBtn);
+  navContainer.appendChild(nextBtn);
+
+  paginationContainer.appendChild(navContainer);
 }
 
 function goToPage(page) {
@@ -70,17 +77,22 @@ function goToPage(page) {
   renderPagination();
 }
 
-window.toggleReservation = function(itemId) {
-  if (reservations[itemId]) {
-    delete reservations[itemId];
-  } else {
-    reservations[itemId] = {
-      timestamp: new Date().toISOString(),
-      user: 'Member' // Mock user
-    };
-  }
-  localStorage.setItem('guildReservations', JSON.stringify(reservations));
+window.claimItem = function(itemId) {
+  const input = document.getElementById(`input_${itemId}`);
+  const ign = input.value.trim();
+  if (!ign) return alert("Please enter your IGN!");
+  
+  reservations[itemId] = ign;
+  localStorage.setItem('guild_claims', JSON.stringify(reservations));
   renderItems();
+};
+
+window.unreserveItem = function(itemId) {
+  if (confirm("Are you sure you want to unreserve this item?")) {
+    delete reservations[itemId];
+    localStorage.setItem('guild_claims', JSON.stringify(reservations));
+    renderItems();
+  }
 };
 
 init();
