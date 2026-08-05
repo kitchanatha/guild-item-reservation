@@ -84,25 +84,6 @@ function goToPage(page) {
   renderPagination();
 }
 
-window.showView = function(viewName) {
-  const itemsView = getEl('view-items');
-  const summaryView = getEl('view-summary');
-  const itemsBtn = getEl('btn-items');
-  const summaryBtn = getEl('btn-summary');
-
-  if (viewName === 'items') {
-    itemsView.classList.remove('hidden');
-    summaryView.classList.add('hidden');
-    itemsBtn.classList.add('active');
-    summaryBtn.classList.remove('active');
-  } else {
-    itemsView.classList.add('hidden');
-    summaryView.classList.remove('hidden');
-    itemsBtn.classList.remove('active');
-    summaryBtn.classList.add('active');
-    renderSummary();
-  }
-};
 
 window.claimItem = function(itemId) {
   const input = document.getElementById(`input_${itemId}`);
