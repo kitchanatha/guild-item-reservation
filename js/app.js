@@ -11,16 +11,16 @@ function getEl(id) {
 }
 
 function init() {
+  setupAdminTrigger();
   renderItems();
   renderPagination();
   renderSummary();
-  setupAdminTrigger();
 }
 
 function setupAdminTrigger() {
   const trigger = getEl('admin-trigger');
   if (trigger) {
-    trigger.onclick = () => {
+    const handleTrigger = (e) => {
       adminClickCount++;
       if (adminClickCount >= 5) {
         const actions = getEl('admin-actions');
@@ -30,6 +30,8 @@ function setupAdminTrigger() {
         adminClickCount = 0;
       }
     };
+    
+    trigger.addEventListener('click', handleTrigger);
   }
 }
 
