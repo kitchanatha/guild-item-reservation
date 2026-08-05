@@ -1,6 +1,8 @@
 const TOTAL_ITEMS = 100;
-const DISPLAY_ITEMS_PER_ROW = 4;
-const ITEMS_PER_GAME_PAGE = 4; // Used for summary calculation
+const ITEMS_PER_PAGE = 4;
+const TOTAL_PAGES = Math.ceil(TOTAL_ITEMS / ITEMS_PER_PAGE);
+
+let currentPage = 1;
 
 function safeGet(key) {
   try {
@@ -73,7 +75,10 @@ function renderItems() {
   if (!container) return;
   container.innerHTML = '';
   
-  for (let i = 0; i < TOTAL_ITEMS; i++) {
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, TOTAL_ITEMS);
+  
+  for (let i = startIndex; i < endIndex; i++) {
     const itemId = i + 1;
     const claimedBy = reservations[itemId];
     const isReserved = !!claimedBy;
@@ -90,7 +95,19 @@ function renderItems() {
     itemElement.appendChild(statusDiv);
     container.appendChild(itemElement);
   }
+
+  const indicator = getEl('page-indicator');
+  if (indicator) indicator.textContent = `Page ${currentPage} of ${TOTAL_PAGES}`;
 }
+
+function changePage(delta) {
+  const newPage = currentPage + delta;
+  if (newPage >= 1 && newPage <= TOTAL_PAGES) {
+    currentPage = newPage;
+    renderItems();
+  }
+}
+window.changePage = changePage;
 
 function saveGlobalIGN() {
   const input = getEl('global-ign');
@@ -189,8 +206,8 @@ function renderSummary() {
     const ign = reservations[itemId];
     if (!playerGroups[ign]) playerGroups[ign] = [];
     const id = parseInt(itemId);
-    const pageNum = Math.ceil(id / ITEMS_PER_GAME_PAGE);
-    const itemNum = ((id - 1) % ITEMS_PER_GAME_PAGE) + 1;
+    const pageNum = Math.ceil(id / ITEMS_PER_PAGE);
+    const itemNum = ((id - 1) % ITEMS_PER_PAGE) + 1;
     playerGroups[ign].push({ id, pageNum, itemNum });
   });
 

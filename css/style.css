@@ -216,7 +216,24 @@ button:disabled {
   background: #1e1e1e;
   padding: 20px;
   border-radius: 8px;
-  border: 1px solid #333;
+}
+
+.pagination-controls {
+  margin: 20px 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+}
+
+.pagination-controls button {
+  min-width: 120px;
+}
+
+#page-indicator {
+  font-weight: bold;
+  font-size: 1.1em;
+  color: #ffd700;
 }
 
 .user-settings input[type="text"] {
