@@ -7,10 +7,12 @@ let reservations = JSON.parse(localStorage.getItem('guild_claims')) || {};
 
 const itemsContainer = document.getElementById('items-container');
 const paginationContainer = document.getElementById('pagination');
+const summaryContainer = document.getElementById('summary-container');
 
 function init() {
   renderItems();
   renderPagination();
+  renderSummary();
 }
 
 function renderItems() {
@@ -85,6 +87,7 @@ window.claimItem = function(itemId) {
   reservations[itemId] = ign;
   localStorage.setItem('guild_claims', JSON.stringify(reservations));
   renderItems();
+  renderSummary();
 };
 
 window.unreserveItem = function(itemId) {
@@ -92,7 +95,44 @@ window.unreserveItem = function(itemId) {
     delete reservations[itemId];
     localStorage.setItem('guild_claims', JSON.stringify(reservations));
     renderItems();
+    renderSummary();
   }
 };
+
+function renderSummary() {
+  if (!summaryContainer) return;
+  
+  const playerGroups = {};
+  Object.keys(reservations).forEach(itemId => {
+    const ign = reservations[itemId];
+    if (!playerGroups[ign]) playerGroups[ign] = [];
+    const id = parseInt(itemId);
+    const pageNum = Math.ceil(id / ITEMS_PER_PAGE);
+    const itemNum = ((id - 1) % ITEMS_PER_PAGE) + 1;
+    playerGroups[ign].push({ id, pageNum, itemNum });
+  });
+
+  const players = Object.keys(playerGroups).sort();
+  if (players.length === 0) {
+    summaryContainer.innerHTML = '';
+    return;
+  }
+
+  let html = '<h2>📊 Reservation Summary</h2>';
+  html += '<div class="summary-grid">';
+  players.forEach(player => {
+    const items = playerGroups[player];
+    html += `
+      <div class="summary-card">
+        <h3>👤 ${player} (${items.length} ${items.length === 1 ? 'item' : 'items'})</h3>
+        <ul>
+          ${items.map(item => `<li>Item #${item.id} (Page ${item.pageNum}, Item #${item.itemNum})</li>`).join('')}
+        </ul>
+      </div>
+    `;
+  });
+  html += '</div>';
+  summaryContainer.innerHTML = html;
+}
 
 init();
