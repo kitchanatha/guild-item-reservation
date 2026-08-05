@@ -24,11 +24,13 @@
       <button class="reset-btn" onclick="resetReservations()">🔄 Reset All Reservations</button>
     </div>
 
+    <div class="user-settings">
+      <input type="text" id="global-ign" placeholder="Enter your IGN to claim items" oninput="saveGlobalIGN()">
+      <p class="hint">Click any available item below to claim it!</p>
+    </div>
+
     <div id="items-container" class="items-grid">
       <!-- Items will be injected here by JS -->
-    </div>
-    <div id="pagination" class="pagination">
-      <!-- Pagination will be injected here by JS -->
     </div>
     <div id="summary-container" class="summary-section">
       <!-- Summary will be injected here by JS -->
