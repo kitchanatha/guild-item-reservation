@@ -38,6 +38,11 @@
       </div>
 
       <div class="admin-setting">
+        <label for="item-prefix">Item Prefix:</label>
+        <input type="text" id="item-prefix" placeholder="#" onchange="updateItemPrefix()">
+      </div>
+
+      <div class="admin-setting">
         <label for="total-items">Total items:</label>
         <input type="number" id="total-items" min="1" step="1" onchange="updateTotalItems()">
       </div>

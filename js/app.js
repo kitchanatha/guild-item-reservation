@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 
 let totalItems = 100;
 let itemsPerPage = 4;
+let itemPrefix = '#';
 let totalPages = Math.ceil(totalItems / itemsPerPage);
 
 const DEFAULT_SB_URL = 'https://kowsnqqznjgpfsumgsir.supabase.co';
@@ -36,6 +37,13 @@ async function init() {
   }
   const totalInput = getEl('total-items');
   if (totalInput) totalInput.value = totalItems;
+
+  const savedItemPrefix = safeGet('item_prefix');
+  if (savedItemPrefix !== null) {
+    itemPrefix = savedItemPrefix;
+  }
+  const prefixInput = getEl('item-prefix');
+  if (prefixInput) prefixInput.value = itemPrefix;
 
   const savedItemsPerPage = safeGet('items_per_page');
   if (savedItemsPerPage) {
@@ -179,20 +187,49 @@ function handleRemoteChange(payload) {
 function applyRemoteConfig(configStr) {
   try {
     const config = JSON.parse(configStr);
-    if (config.totalItems) {
+    let changed = false;
+
+    if (config.totalItems && config.totalItems !== totalItems) {
       totalItems = config.totalItems;
       safeSet('total_items', totalItems);
       const totalInput = getEl('total-items');
       if (totalInput) totalInput.value = totalItems;
+      changed = true;
+    }
+
+    if (config.itemsPerPage && config.itemsPerPage !== itemsPerPage) {
+      itemsPerPage = config.itemsPerPage;
+      safeSet('items_per_page', itemsPerPage);
+      const selector = getEl('items-per-page');
+      if (selector) selector.value = itemsPerPage;
+      changed = true;
+    }
+
+    if (config.itemPrefix !== undefined && config.itemPrefix !== itemPrefix) {
+      itemPrefix = config.itemPrefix;
+      safeSet('item_prefix', itemPrefix);
+      const prefixInput = getEl('item-prefix');
+      if (prefixInput) prefixInput.value = itemPrefix;
+      changed = true;
+    }
+
+    if (changed) {
       totalPages = Math.ceil(totalItems / itemsPerPage);
+      renderItems();
+      renderSummary();
     }
   } catch (e) {
     console.warn("Failed to parse remote config", e);
   }
 }
 
-async function persistConfig(config) {
+async function persistConfig() {
   if (syncEnabled && supabase) {
+    const config = { 
+      totalItems, 
+      itemsPerPage, 
+      itemPrefix 
+    };
     const { error } = await supabase
       .from('reservations')
       .upsert({ item_id: 0, ign: JSON.stringify(config) });
@@ -284,7 +321,7 @@ function renderItems() {
     statusDiv.className = 'item-status';
     statusDiv.textContent = isReserved ? '🔴 ' + claimedBy : '🟢 Available';
     
-    itemElement.innerHTML = `<div class="item-id">#${itemId}</div>`;
+    itemElement.innerHTML = `<div class="item-id">${itemPrefix}${itemId}</div>`;
     itemElement.appendChild(statusDiv);
     container.appendChild(itemElement);
   }
@@ -309,11 +346,28 @@ function updateItemsPerPage() {
     safeSet('items_per_page', itemsPerPage);
     totalPages = Math.ceil(totalItems / itemsPerPage);
     currentPage = 1; // Reset to page 1 to avoid out of bounds
+    
+    persistConfig();
+    
     renderItems();
     renderSummary(); // Summary needs re-rendering as it shows page numbers
   }
 }
 window.updateItemsPerPage = updateItemsPerPage;
+
+async function updateItemPrefix() {
+  const input = getEl('item-prefix');
+  if (input) {
+    itemPrefix = input.value;
+    safeSet('item_prefix', itemPrefix);
+    
+    await persistConfig();
+    
+    renderItems();
+    renderSummary();
+  }
+}
+window.updateItemPrefix = updateItemPrefix;
 
 async function updateTotalItems() {
   const input = getEl('total-items');
@@ -326,7 +380,7 @@ async function updateTotalItems() {
     totalPages = Math.ceil(totalItems / itemsPerPage);
     currentPage = 1; // Reset to avoid being out of bounds
     
-    await persistConfig({ totalItems });
+    await persistConfig();
     
     renderItems();
     renderSummary();
@@ -451,6 +505,12 @@ function renderSummary() {
   const title = document.createElement('h2');
   title.textContent = '📊 Reservation Summary';
   container.appendChild(title);
+
+  const totalReserved = Object.keys(reservations).filter(k => k !== "0").length;
+  const stats = document.createElement('p');
+  stats.className = 'summary-stats';
+  stats.textContent = `Progress: ${totalReserved} / ${totalItems} items claimed (${Math.round((totalReserved/totalItems)*100)}%)`;
+  container.appendChild(stats);
   
   if (players.length === 0) {
     const p = document.createElement('p');
@@ -474,7 +534,7 @@ function renderSummary() {
     const ul = document.createElement('ul');
     items.forEach(item => {
       const li = document.createElement('li');
-      li.textContent = `Item #${item.id} (Page ${item.pageNum}, Item #${item.itemNum})`;
+      li.textContent = `${itemPrefix}${item.id} (Page ${item.pageNum}, Item #${item.itemNum})`;
       ul.appendChild(li);
     });
     card.appendChild(ul);
@@ -490,7 +550,7 @@ function renderSummary() {
     players.forEach(player => {
       const items = playerGroups[player];
       text += `\n👤 **${player}** (${items.length} items):\n`;
-      text += items.map(item => `- Item #${item.id} (P${item.pageNum}, #${item.itemNum})`).join('\n') + "\n";
+      text += items.map(item => `- ${itemPrefix}${item.id} (P${item.pageNum}, #${item.itemNum})`).join('\n') + "\n";
     });
     navigator.clipboard.writeText(text).then(() => alert("Summary copied to clipboard!"));
   };

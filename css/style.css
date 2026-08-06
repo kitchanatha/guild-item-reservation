@@ -249,13 +249,29 @@ button:disabled {
   border-radius: 4px;
 }
 
-.admin-setting input[type="number"] {
+.admin-setting input[type="number"],
+.admin-setting input[type="text"] {
   background: #121212;
   color: #fff;
   border: 1px solid #333;
   padding: 6px 12px;
   border-radius: 4px;
+}
+
+.admin-setting input[type="number"] {
   width: 80px;
+}
+
+.admin-setting input[type="text"] {
+  width: 120px;
+}
+
+.summary-stats {
+  margin-top: -10px;
+  margin-bottom: 25px;
+  color: #ffd700;
+  font-weight: bold;
+  font-size: 1.1em;
 }
 
 .pagination-controls button {
