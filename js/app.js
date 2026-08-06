@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
-const TOTAL_ITEMS = 100;
+let totalItems = 100;
 let itemsPerPage = 4;
-let totalPages = Math.ceil(TOTAL_ITEMS / itemsPerPage);
+let totalPages = Math.ceil(totalItems / itemsPerPage);
 
 const DEFAULT_SB_URL = 'https://kowsnqqznjgpfsumgsir.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_7UW1aict4fPrLAdrPCLvaQ_4j0acB_J';
@@ -30,13 +30,21 @@ async function init() {
   setupAdminTrigger();
   loadSupabaseConfig();
   
+  const savedTotalItems = safeGet('total_items');
+  if (savedTotalItems) {
+    totalItems = parseInt(savedTotalItems);
+  }
+  const totalInput = getEl('total-items');
+  if (totalInput) totalInput.value = totalItems;
+
   const savedItemsPerPage = safeGet('items_per_page');
   if (savedItemsPerPage) {
     itemsPerPage = parseInt(savedItemsPerPage);
     const selector = getEl('items-per-page');
     if (selector) selector.value = itemsPerPage;
-    totalPages = Math.ceil(TOTAL_ITEMS / itemsPerPage);
   }
+  
+  totalPages = Math.ceil(totalItems / itemsPerPage);
   
   const savedIGN = safeGet('guild_ign') || '';
   const globalInput = getEl('global-ign');
@@ -128,7 +136,11 @@ async function connectSupabase() {
     // Convert array to object mapping
     reservations = {};
     data.forEach(row => {
-      reservations[row.item_id] = row.ign;
+      if (row.item_id === 0) {
+        applyRemoteConfig(row.ign);
+      } else {
+        reservations[row.item_id] = row.ign;
+      }
     });
     
     updateSyncStatus('online');
@@ -150,12 +162,42 @@ async function connectSupabase() {
 
 function handleRemoteChange(payload) {
   if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-    reservations[payload.new.item_id] = payload.new.ign;
+    if (payload.new.item_id === 0) {
+      applyRemoteConfig(payload.new.ign);
+    } else {
+      reservations[payload.new.item_id] = payload.new.ign;
+    }
   } else if (payload.eventType === 'DELETE') {
-    delete reservations[payload.old.item_id];
+    if (payload.old.item_id !== 0) {
+      delete reservations[payload.old.item_id];
+    }
   }
   renderItems();
   renderSummary();
+}
+
+function applyRemoteConfig(configStr) {
+  try {
+    const config = JSON.parse(configStr);
+    if (config.totalItems) {
+      totalItems = config.totalItems;
+      safeSet('total_items', totalItems);
+      const totalInput = getEl('total-items');
+      if (totalInput) totalInput.value = totalItems;
+      totalPages = Math.ceil(totalItems / itemsPerPage);
+    }
+  } catch (e) {
+    console.warn("Failed to parse remote config", e);
+  }
+}
+
+async function persistConfig(config) {
+  if (syncEnabled && supabase) {
+    const { error } = await supabase
+      .from('reservations')
+      .upsert({ item_id: 0, ign: JSON.stringify(config) });
+    if (error) console.error("Sync config failed:", error);
+  }
 }
 
 async function persistReservation(itemId, ign) {
@@ -227,7 +269,7 @@ function renderItems() {
   container.innerHTML = '';
   
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const endIndex = Math.min(startIndex + itemsPerPage, TOTAL_ITEMS);
+  const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
   
   for (let i = startIndex; i < endIndex; i++) {
     const itemId = i + 1;
@@ -265,13 +307,32 @@ function updateItemsPerPage() {
   if (selector) {
     itemsPerPage = parseInt(selector.value);
     safeSet('items_per_page', itemsPerPage);
-    totalPages = Math.ceil(TOTAL_ITEMS / itemsPerPage);
+    totalPages = Math.ceil(totalItems / itemsPerPage);
     currentPage = 1; // Reset to page 1 to avoid out of bounds
     renderItems();
     renderSummary(); // Summary needs re-rendering as it shows page numbers
   }
 }
 window.updateItemsPerPage = updateItemsPerPage;
+
+async function updateTotalItems() {
+  const input = getEl('total-items');
+  if (input) {
+    const val = parseInt(input.value);
+    if (isNaN(val) || val < 1) return;
+    
+    totalItems = val;
+    safeSet('total_items', totalItems);
+    totalPages = Math.ceil(totalItems / itemsPerPage);
+    currentPage = 1; // Reset to avoid being out of bounds
+    
+    await persistConfig({ totalItems });
+    
+    renderItems();
+    renderSummary();
+  }
+}
+window.updateTotalItems = updateTotalItems;
 
 function saveGlobalIGN() {
   const input = getEl('global-ign');
@@ -374,6 +435,7 @@ function renderSummary() {
   
   const playerGroups = {};
   Object.keys(reservations).forEach(itemId => {
+    if (itemId === "0") return; // Skip config record
     const ign = reservations[itemId];
     if (!ign) return;
     if (!playerGroups[ign]) playerGroups[ign] = [];

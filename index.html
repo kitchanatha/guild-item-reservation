@@ -36,6 +36,11 @@
           <option value="100">100</option>
         </select>
       </div>
+
+      <div class="admin-setting">
+        <label for="total-items">Total items:</label>
+        <input type="number" id="total-items" min="1" step="1" onchange="updateTotalItems()">
+      </div>
       
       <div class="supabase-config">
         <h3>Cloud Sync (Supabase)</h3>

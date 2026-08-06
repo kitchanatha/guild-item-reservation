@@ -249,6 +249,15 @@ button:disabled {
   border-radius: 4px;
 }
 
+.admin-setting input[type="number"] {
+  background: #121212;
+  color: #fff;
+  border: 1px solid #333;
+  padding: 6px 12px;
+  border-radius: 4px;
+  width: 80px;
+}
+
 .pagination-controls button {
   min-width: 120px;
 }
