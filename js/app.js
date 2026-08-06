@@ -53,6 +53,8 @@ async function init() {
   }
   
   totalPages = Math.ceil(totalItems / itemsPerPage);
+  const pagesInput = getEl('total-pages');
+  if (pagesInput) pagesInput.value = totalPages;
   
   const savedIGN = safeGet('guild_ign') || '';
   const globalInput = getEl('global-ign');
@@ -215,6 +217,8 @@ function applyRemoteConfig(configStr) {
 
     if (changed) {
       totalPages = Math.ceil(totalItems / itemsPerPage);
+      const pagesInput = getEl('total-pages');
+      if (pagesInput) pagesInput.value = totalPages;
       renderItems();
       renderSummary();
     }
@@ -346,6 +350,9 @@ function updateItemsPerPage() {
     safeSet('items_per_page', itemsPerPage);
     totalPages = Math.ceil(totalItems / itemsPerPage);
     currentPage = 1; // Reset to page 1 to avoid out of bounds
+
+    const pagesInput = getEl('total-pages');
+    if (pagesInput) pagesInput.value = totalPages;
     
     persistConfig();
     
@@ -380,6 +387,9 @@ async function updateTotalItems() {
     totalPages = Math.ceil(totalItems / itemsPerPage);
     currentPage = 1; // Reset to avoid being out of bounds
     
+    const pagesInput = getEl('total-pages');
+    if (pagesInput) pagesInput.value = totalPages;
+    
     await persistConfig();
     
     renderItems();
@@ -387,6 +397,29 @@ async function updateTotalItems() {
   }
 }
 window.updateTotalItems = updateTotalItems;
+
+async function updateTotalPages() {
+  const input = getEl('total-pages');
+  if (input) {
+    const val = parseInt(input.value);
+    if (isNaN(val) || val < 1) return;
+    
+    totalPages = val;
+    totalItems = totalPages * itemsPerPage;
+    safeSet('total_items', totalItems);
+    currentPage = 1; // Reset to avoid being out of bounds
+    
+    const totalInput = getEl('total-items');
+    if (totalInput) totalInput.value = totalItems;
+    
+    await persistConfig();
+    
+    renderItems();
+    renderSummary();
+  }
+}
+window.updateTotalPages = updateTotalPages;
+
 
 function saveGlobalIGN() {
   const input = getEl('global-ign');
