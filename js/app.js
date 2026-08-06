@@ -56,6 +56,9 @@ async function init() {
   const pagesInput = getEl('total-pages');
   if (pagesInput) pagesInput.value = totalPages;
   
+  const totalItemsVal = getEl('total-items-val');
+  if (totalItemsVal) totalItemsVal.textContent = totalItems;
+  
   const savedIGN = safeGet('guild_ign') || '';
   const globalInput = getEl('global-ign');
   if (globalInput) globalInput.value = savedIGN;
@@ -219,6 +222,13 @@ function applyRemoteConfig(configStr) {
       totalPages = Math.ceil(totalItems / itemsPerPage);
       const pagesInput = getEl('total-pages');
       if (pagesInput) pagesInput.value = totalPages;
+      
+      const totalItemsVal = getEl('total-items-val');
+      if (totalItemsVal) totalItemsVal.textContent = totalItems;
+
+      const totalItemsInput = getEl('total-items');
+      if (totalItemsInput) totalItemsInput.value = totalItems;
+
       renderItems();
       renderSummary();
     }
@@ -330,8 +340,14 @@ function renderItems() {
     container.appendChild(itemElement);
   }
 
-  const indicator = getEl('page-indicator');
-  if (indicator) indicator.textContent = `Page ${currentPage} of ${totalPages}`;
+  const currentEl = getEl('current-page-val');
+  if (currentEl) currentEl.textContent = currentPage;
+  
+  const totalItemsEl = getEl('total-items-val');
+  if (totalItemsEl) totalItemsEl.textContent = totalItems;
+
+  const pagesInput = getEl('total-pages');
+  if (pagesInput) pagesInput.value = totalPages;
 }
 
 function changePage(delta) {
@@ -353,6 +369,9 @@ function updateItemsPerPage() {
 
     const pagesInput = getEl('total-pages');
     if (pagesInput) pagesInput.value = totalPages;
+    
+    const totalItemsVal = getEl('total-items-val');
+    if (totalItemsVal) totalItemsVal.textContent = totalItems;
     
     persistConfig();
     
@@ -390,6 +409,9 @@ async function updateTotalItems() {
     const pagesInput = getEl('total-pages');
     if (pagesInput) pagesInput.value = totalPages;
     
+    const totalItemsVal = getEl('total-items-val');
+    if (totalItemsVal) totalItemsVal.textContent = totalItems;
+    
     await persistConfig();
     
     renderItems();
@@ -411,6 +433,9 @@ async function updateTotalPages() {
     
     const totalInput = getEl('total-items');
     if (totalInput) totalInput.value = totalItems;
+    
+    const totalItemsVal = getEl('total-items-val');
+    if (totalItemsVal) totalItemsVal.textContent = totalItems;
     
     await persistConfig();
     

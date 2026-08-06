@@ -26,18 +26,6 @@
       <button class="import-btn" onclick="importData()">📥 Import JSON</button>
       
       <div class="admin-setting">
-        <label for="items-per-page">Items per page:</label>
-        <select id="items-per-page" onchange="updateItemsPerPage()">
-          <option value="4">4</option>
-          <option value="8">8</option>
-          <option value="12">12</option>
-          <option value="20">20</option>
-          <option value="50">50</option>
-          <option value="100">100</option>
-        </select>
-      </div>
-
-      <div class="admin-setting">
         <label for="item-prefix">Item Prefix:</label>
         <input type="text" id="item-prefix" placeholder="#" onchange="updateItemPrefix()">
       </div>
@@ -45,11 +33,6 @@
       <div class="admin-setting">
         <label for="total-items">Total items:</label>
         <input type="number" id="total-items" min="1" step="1" onchange="updateTotalItems()">
-      </div>
-
-      <div class="admin-setting">
-        <label for="total-pages">Total pages:</label>
-        <input type="number" id="total-pages" min="1" step="1" onchange="updateTotalPages()">
       </div>
       
       <div class="supabase-config">
@@ -72,9 +55,22 @@
     </div>
 
     <div class="pagination-controls">
-      <button onclick="changePage(-1)">⬅️ Previous</button>
-      <span id="page-indicator">Page 1 of 25</span>
-      <button onclick="changePage(1)">Next ➡️</button>
+      <div class="items-per-page-container">
+        <label for="items-per-page">Items per page:</label>
+        <select id="items-per-page" onchange="updateItemsPerPage()">
+          <option value="4">4</option>
+          <option value="8">8</option>
+          <option value="12">12</option>
+          <option value="20">20</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
+      </div>
+      <div class="nav-buttons">
+        <button onclick="changePage(-1)">⬅️ Previous</button>
+        <span id="page-indicator">Page <span id="current-page-val">1</span> of <input type="number" id="total-pages" min="1" step="1" onchange="updateTotalPages()" style="width: 50px; background: #121212; color: #fff; border: 1px solid #333; text-align: center;"> (<span id="total-items-val">100</span> items)</span>
+        <button onclick="changePage(1)">Next ➡️</button>
+      </div>
     </div>
 
     <div id="summary-container" class="summary-section">
