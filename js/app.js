@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
 const TOTAL_ITEMS = 100;
-const ITEMS_PER_PAGE = 4;
-const TOTAL_PAGES = Math.ceil(TOTAL_ITEMS / ITEMS_PER_PAGE);
+let itemsPerPage = 4;
+let totalPages = Math.ceil(TOTAL_ITEMS / itemsPerPage);
 
 const DEFAULT_SB_URL = 'https://kowsnqqznjgpfsumgsir.supabase.co';
 const DEFAULT_SB_KEY = 'sb_publishable_7UW1aict4fPrLAdrPCLvaQ_4j0acB_J';
@@ -29,6 +29,14 @@ function safeSet(key, value) {
 async function init() {
   setupAdminTrigger();
   loadSupabaseConfig();
+  
+  const savedItemsPerPage = safeGet('items_per_page');
+  if (savedItemsPerPage) {
+    itemsPerPage = parseInt(savedItemsPerPage);
+    const selector = getEl('items-per-page');
+    if (selector) selector.value = itemsPerPage;
+    totalPages = Math.ceil(TOTAL_ITEMS / itemsPerPage);
+  }
   
   const savedIGN = safeGet('guild_ign') || '';
   const globalInput = getEl('global-ign');
@@ -218,8 +226,8 @@ function renderItems() {
   if (!container) return;
   container.innerHTML = '';
   
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIndex = Math.min(startIndex + ITEMS_PER_PAGE, TOTAL_ITEMS);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const endIndex = Math.min(startIndex + itemsPerPage, TOTAL_ITEMS);
   
   for (let i = startIndex; i < endIndex; i++) {
     const itemId = i + 1;
@@ -240,17 +248,30 @@ function renderItems() {
   }
 
   const indicator = getEl('page-indicator');
-  if (indicator) indicator.textContent = `Page ${currentPage} of ${TOTAL_PAGES}`;
+  if (indicator) indicator.textContent = `Page ${currentPage} of ${totalPages}`;
 }
 
 function changePage(delta) {
   const newPage = currentPage + delta;
-  if (newPage >= 1 && newPage <= TOTAL_PAGES) {
+  if (newPage >= 1 && newPage <= totalPages) {
     currentPage = newPage;
     renderItems();
   }
 }
 window.changePage = changePage;
+
+function updateItemsPerPage() {
+  const selector = getEl('items-per-page');
+  if (selector) {
+    itemsPerPage = parseInt(selector.value);
+    safeSet('items_per_page', itemsPerPage);
+    totalPages = Math.ceil(TOTAL_ITEMS / itemsPerPage);
+    currentPage = 1; // Reset to page 1 to avoid out of bounds
+    renderItems();
+    renderSummary(); // Summary needs re-rendering as it shows page numbers
+  }
+}
+window.updateItemsPerPage = updateItemsPerPage;
 
 function saveGlobalIGN() {
   const input = getEl('global-ign');
@@ -354,10 +375,11 @@ function renderSummary() {
   const playerGroups = {};
   Object.keys(reservations).forEach(itemId => {
     const ign = reservations[itemId];
+    if (!ign) return;
     if (!playerGroups[ign]) playerGroups[ign] = [];
     const id = parseInt(itemId);
-    const pageNum = Math.ceil(id / ITEMS_PER_PAGE);
-    const itemNum = ((id - 1) % ITEMS_PER_PAGE) + 1;
+    const pageNum = Math.ceil(id / itemsPerPage);
+    const itemNum = ((id - 1) % itemsPerPage) + 1;
     playerGroups[ign].push({ id, pageNum, itemNum });
   });
 
