@@ -227,19 +227,25 @@ button:disabled {
   flex-wrap: wrap;
 }
 
-.page-size-selector {
+.admin-setting {
+  margin: 15px 0;
+  padding: 15px;
+  background: #1e1e1e;
+  border-radius: 8px;
+  border: 1px solid #444;
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 0.9em;
+  justify-content: center;
+  gap: 12px;
+  font-size: 0.95em;
   color: #ccc;
 }
 
-.page-size-selector select {
-  background: #1e1e1e;
+.admin-setting select {
+  background: #121212;
   color: #fff;
   border: 1px solid #333;
-  padding: 4px 8px;
+  padding: 6px 12px;
   border-radius: 4px;
 }
 
