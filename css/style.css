@@ -300,6 +300,22 @@ button:disabled {
   font-size: 1.1em;
 }
 
+.pagination-controls input[type="number"] {
+  background: #121212;
+  color: #fff;
+  border: 1px solid #333;
+  text-align: center;
+  border-radius: 4px;
+  padding: 4px;
+  font-family: inherit;
+  font-weight: bold;
+}
+
+.pagination-controls input[type="number"]:focus {
+  border-color: #28a745;
+  outline: none;
+}
+
 .pagination-controls button {
   min-width: 120px;
 }

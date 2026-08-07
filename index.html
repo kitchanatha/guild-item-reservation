@@ -27,12 +27,12 @@
       
       <div class="admin-setting">
         <label for="item-prefix">Item Prefix:</label>
-        <input type="text" id="item-prefix" placeholder="#" onchange="updateItemPrefix()">
+        <input type="text" id="item-prefix" placeholder="#" oninput="updateItemPrefix()">
       </div>
-
+ 
       <div class="admin-setting">
         <label for="total-items">Total items:</label>
-        <input type="number" id="total-items" min="1" step="1" onchange="updateTotalItems()">
+        <input type="number" id="total-items" min="1" step="1" oninput="updateTotalItems()">
       </div>
       
       <div class="supabase-config">
@@ -68,7 +68,7 @@
       </div>
       <div class="nav-buttons">
         <button onclick="changePage(-1)">⬅️ Previous</button>
-        <span id="page-indicator">Page <span id="current-page-val">1</span> of <input type="number" id="total-pages" min="1" step="1" onchange="updateTotalPages()" style="width: 50px; background: #121212; color: #fff; border: 1px solid #333; text-align: center;"> (<span id="total-items-val">100</span> items)</span>
+        <span id="page-indicator">Page <span id="current-page-val">1</span> of <input type="number" id="total-pages" min="1" step="1" oninput="updateTotalPages()" style="width: 50px;"> (<input type="number" id="total-items-footer" min="1" step="1" oninput="updateTotalItems(this)" style="width: 60px;"> items)</span>
         <button onclick="changePage(1)">Next ➡️</button>
       </div>
     </div>
