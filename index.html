@@ -25,16 +25,6 @@
       <button class="export-btn" onclick="exportData()">📤 Export JSON</button>
       <button class="import-btn" onclick="importData()">📥 Import JSON</button>
       
-      <div class="admin-setting">
-        <label for="item-prefix">Item Prefix:</label>
-        <input type="text" id="item-prefix" placeholder="#" oninput="updateItemPrefix()">
-      </div>
- 
-      <div class="admin-setting">
-        <label for="total-items">Total items:</label>
-        <input type="number" id="total-items" min="1" step="1" oninput="updateTotalItems()">
-      </div>
-      
       <div class="supabase-config">
         <h3>Cloud Sync (Supabase)</h3>
         <input type="text" id="supabase-url" placeholder="Supabase URL (https://xyz.supabase.co)">
@@ -50,13 +40,17 @@
       <p class="hint">Click any available item below to claim it!</p>
     </div>
 
-    <div id="items-container" class="items-grid">
-      <!-- Items will be injected here by JS -->
-    </div>
-
-    <div class="pagination-controls">
-      <div class="items-per-page-container">
-        <label for="items-per-page">Items per page:</label>
+    <div class="config-section">
+      <div class="config-item">
+        <label for="item-prefix">Prefix:</label>
+        <input type="text" id="item-prefix" placeholder="#" oninput="updateItemPrefix()" style="width: 40px;">
+      </div>
+      <div class="config-item">
+        <label for="total-items">Total Items:</label>
+        <input type="number" id="total-items" min="1" step="1" oninput="updateTotalItems()" style="width: 70px;">
+      </div>
+      <div class="config-item">
+        <label for="items-per-page">Per Page:</label>
         <select id="items-per-page" onchange="updateItemsPerPage()">
           <option value="4">4</option>
           <option value="8">8</option>
@@ -66,9 +60,20 @@
           <option value="100">100</option>
         </select>
       </div>
+      <div class="config-item">
+        <label for="total-pages">Total Pages:</label>
+        <input type="number" id="total-pages" min="1" step="1" oninput="updateTotalPages()" style="width: 60px;">
+      </div>
+    </div>
+
+    <div id="items-container" class="items-grid">
+      <!-- Items will be injected here by JS -->
+    </div>
+
+    <div class="pagination-controls">
       <div class="nav-buttons">
         <button onclick="changePage(-1)">⬅️ Previous</button>
-        <span id="page-indicator">Page <span id="current-page-val">1</span> of <input type="number" id="total-pages" min="1" step="1" oninput="updateTotalPages()" style="width: 50px;"> (<input type="number" id="total-items-footer" min="1" step="1" oninput="updateTotalItems(this)" style="width: 60px;"> items)</span>
+        <span id="page-indicator">Page <span id="current-page-val">1</span> of <span id="total-pages-val">25</span></span>
         <button onclick="changePage(1)">Next ➡️</button>
       </div>
     </div>

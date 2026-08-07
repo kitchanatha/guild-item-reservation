@@ -221,11 +221,8 @@ button:disabled {
 .pagination-controls {
   margin: 20px 0;
   display: flex;
-  flex-direction: column;
   justify-content: center;
   align-items: center;
-  gap: 15px;
-  flex-wrap: wrap;
   background: #1e1e1e;
   padding: 15px;
   border-radius: 8px;
@@ -251,6 +248,45 @@ button:disabled {
   border: 1px solid #333;
   padding: 4px 8px;
   border-radius: 4px;
+}
+
+.config-section {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 15px;
+  background: #1e1e1e;
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  border: 1px solid #333;
+}
+
+.config-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #ccc;
+  font-size: 0.9em;
+}
+
+.config-item label {
+  font-weight: bold;
+}
+
+.config-item input, .config-item select {
+  background: #121212;
+  color: #fff;
+  border: 1px solid #333;
+  padding: 5px 8px;
+  border-radius: 4px;
+  text-align: center;
+  font-family: inherit;
+}
+
+.config-item input:focus, .config-item select:focus {
+  border-color: #28a745;
+  outline: none;
 }
 
 .admin-setting {

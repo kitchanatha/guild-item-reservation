@@ -56,9 +56,6 @@ async function init() {
   const pagesInput = getEl('total-pages');
   if (pagesInput) pagesInput.value = totalPages;
   
-  const totalFooter = getEl('total-items-footer');
-  if (totalFooter) totalFooter.value = totalItems;
-  
   const savedIGN = safeGet('guild_ign') || '';
   const globalInput = getEl('global-ign');
   if (globalInput) globalInput.value = savedIGN;
@@ -223,9 +220,6 @@ function applyRemoteConfig(configStr) {
       const pagesInput = getEl('total-pages');
       if (pagesInput) pagesInput.value = totalPages;
       
-      const totalItemsVal = getEl('total-items-footer');
-      if (totalItemsVal) totalItemsVal.value = totalItems;
-
       const totalItemsInput = getEl('total-items');
       if (totalItemsInput) totalItemsInput.value = totalItems;
 
@@ -343,8 +337,11 @@ function renderItems() {
   const currentEl = getEl('current-page-val');
   if (currentEl) currentEl.textContent = currentPage;
   
-  const totalItemsEl = getEl('total-items-footer');
-  if (totalItemsEl && document.activeElement !== totalItemsEl) totalItemsEl.value = totalItems;
+  const totalPagesVal = getEl('total-pages-val');
+  if (totalPagesVal) totalPagesVal.textContent = totalPages;
+
+  const totalItemsInput = getEl('total-items');
+  if (totalItemsInput && document.activeElement !== totalItemsInput) totalItemsInput.value = totalItems;
 
   const pagesInput = getEl('total-pages');
   if (pagesInput && document.activeElement !== pagesInput) pagesInput.value = totalPages;
@@ -370,9 +367,6 @@ function updateItemsPerPage() {
     const pagesInput = getEl('total-pages');
     if (pagesInput) pagesInput.value = totalPages;
     
-    const totalItemsVal = getEl('total-items-footer');
-    if (totalItemsVal) totalItemsVal.value = totalItems;
-    
     renderItems();
     renderSummary(); // Summary needs re-rendering as it shows page numbers
 
@@ -395,8 +389,8 @@ async function updateItemPrefix() {
 }
 window.updateItemPrefix = updateItemPrefix;
 
-async function updateTotalItems(el) {
-  const input = el || getEl('total-items');
+async function updateTotalItems() {
+  const input = getEl('total-items');
   if (input) {
     const val = parseInt(input.value);
     if (isNaN(val) || val < 1) return;
@@ -408,12 +402,6 @@ async function updateTotalItems(el) {
     
     const pagesInput = getEl('total-pages');
     if (pagesInput && document.activeElement !== pagesInput) pagesInput.value = totalPages;
-    
-    const totalAdmin = getEl('total-items');
-    if (totalAdmin && document.activeElement !== totalAdmin) totalAdmin.value = totalItems;
-    
-    const totalFooter = getEl('total-items-footer');
-    if (totalFooter && document.activeElement !== totalFooter) totalFooter.value = totalItems;
     
     renderItems();
     renderSummary();
@@ -434,15 +422,9 @@ async function updateTotalPages() {
     safeSet('total_items', totalItems);
     currentPage = 1; // Reset to avoid being out of bounds
     
-    const totalAdmin = getEl('total-items');
-    if (totalAdmin && document.activeElement !== totalAdmin) totalAdmin.value = totalItems;
+    const totalItemsInput = getEl('total-items');
+    if (totalItemsInput && document.activeElement !== totalItemsInput) totalItemsInput.value = totalItems;
     
-    const totalFooter = getEl('total-items-footer');
-    if (totalFooter && document.activeElement !== totalFooter) totalFooter.value = totalItems;
-    
-    const totalPagesInput = getEl('total-pages');
-    if (totalPagesInput && document.activeElement !== totalPagesInput) totalPagesInput.value = totalPages;
-
     renderItems();
     renderSummary();
 
