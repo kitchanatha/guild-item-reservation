@@ -302,6 +302,7 @@ function setupAdminTrigger() {
       adminClickCount++;
       if (adminClickCount >= 5) {
         getEl('admin-actions')?.classList.toggle('hidden');
+        getEl('config-section')?.classList.toggle('hidden');
         adminClickCount = 0;
       }
     });

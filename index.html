@@ -19,7 +19,10 @@
 <body>
 
   <div class="container">
-    <h1><span id="admin-trigger" style="display: inline-block; cursor: default; user-select: none; padding: 0 10px;">🏠</span> littleHome Item Reservation</h1>
+    <h1>
+      <span id="admin-trigger" style="display: inline-block; cursor: default; user-select: none; padding: 0 10px;">🏠</span>
+      littleHome Item Reservation
+    </h1>
     <div id="admin-actions" class="header-actions hidden">
       <button class="reset-btn" onclick="resetReservations()">🔄 Reset All Reservations</button>
       <button class="export-btn" onclick="exportData()">📤 Export JSON</button>
@@ -40,7 +43,7 @@
       <p class="hint">Click any available item below to claim it!</p>
     </div>
 
-    <div class="config-section">
+    <div id="config-section" class="config-section hidden">
       <div class="config-item">
         <label for="item-prefix">Prefix:</label>
         <input type="text" id="item-prefix" placeholder="#" oninput="updateItemPrefix()" style="width: 40px;">
