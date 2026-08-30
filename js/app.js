@@ -524,6 +524,47 @@ function saveGlobalIGN() {
 }
 window.saveGlobalIGN = saveGlobalIGN;
 
+function showConfirmModal(itemId, itemCard) {
+  const modal = getEl('confirm-modal');
+  const msgEl = getEl('confirm-msg');
+  const confirmBtn = getEl('modal-confirm');
+  const cancelBtn = getEl('modal-cancel');
+  
+  const displayId = ((itemId - 1) % itemsPerPage) + 1;
+  msgEl.innerHTML = `Do you want to claim<br><strong>Page ${currentPage}, ${itemPrefix}${displayId}</strong>?`;
+  
+  modal.classList.remove('hidden');
+  
+  // Anti-macro: Disable confirm button for a short duration
+  confirmBtn.disabled = true;
+  confirmBtn.textContent = 'Wait...';
+  let countdown = 1;
+  const interval = setInterval(() => {
+    countdown--;
+    if (countdown <= 0) {
+      clearInterval(interval);
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = 'Confirm Claim';
+    }
+  }, 1000);
+
+  const cleanup = () => {
+    clearInterval(interval);
+    modal.classList.add('hidden');
+    confirmBtn.onclick = null;
+    cancelBtn.onclick = null;
+  };
+
+  confirmBtn.onclick = () => {
+    cleanup();
+    executeClaim(itemId, itemCard);
+  };
+
+  cancelBtn.onclick = () => {
+    cleanup();
+  };
+}
+
 async function claimItem(itemId, itemCard) {
   const input = getEl('global-ign');
   const ign = input ? input.value.trim() : '';
@@ -541,6 +582,14 @@ async function claimItem(itemId, itemCard) {
   if (reservations[itemId]) {
     return alert("This item is already reserved!");
   }
+
+  showConfirmModal(itemId, itemCard);
+}
+window.claimItem = claimItem;
+
+async function executeClaim(itemId, itemCard) {
+  const input = getEl('global-ign');
+  const ign = input ? input.value.trim() : '';
   
   // Visual feedback
   if (itemCard) itemCard.style.opacity = '0.5';
@@ -576,7 +625,6 @@ async function claimItem(itemId, itemCard) {
     renderSummary();
   }
 }
-window.claimItem = claimItem;
 
 async function unreserveItem(itemId) {
   const claimedBy = reservations[itemId];
