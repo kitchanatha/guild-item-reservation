@@ -324,13 +324,14 @@ function renderItems() {
     
     const itemElement = document.createElement('div');
     itemElement.className = `item-card ${isReserved ? 'reserved' : ''}`;
-    itemElement.onclick = () => isReserved ? unreserveItem(itemId) : claimItem(itemId);
+    itemElement.onclick = () => !isReserved && claimItem(itemId);
     
     const statusDiv = document.createElement('div');
     statusDiv.className = 'item-status';
     statusDiv.textContent = isReserved ? '🔴 ' + claimedBy : '🟢 Available';
     
-    itemElement.innerHTML = `<div class="item-id">${itemPrefix}${itemId}</div>`;
+    const displayId = (i - startIndex) + 1;
+    itemElement.innerHTML = `<div class="item-id">${itemPrefix}${displayId}</div>`;
     itemElement.appendChild(statusDiv);
     container.appendChild(itemElement);
   }
@@ -463,7 +464,9 @@ async function claimItem(itemId) {
 window.claimItem = claimItem;
 
 async function unreserveItem(itemId) {
-  if (confirm(`Are you sure you want to unreserve Item #${itemId}?`)) {
+  const pageNum = Math.ceil(itemId / itemsPerPage);
+  const itemNum = ((itemId - 1) % itemsPerPage) + 1;
+  if (confirm(`Are you sure you want to unreserve Item (Page ${pageNum}, ${itemPrefix}${itemNum})?`)) {
     const success = await deleteReservation(itemId);
     if (success) {
       renderItems();
@@ -581,7 +584,7 @@ function renderSummary() {
     const ul = document.createElement('ul');
     items.forEach(item => {
       const li = document.createElement('li');
-      li.textContent = `${itemPrefix}${item.id} (Page ${item.pageNum}, Item #${item.itemNum})`;
+      li.textContent = `Page ${item.pageNum}, ${itemPrefix}${item.itemNum}`;
       ul.appendChild(li);
     });
     card.appendChild(ul);
@@ -597,7 +600,7 @@ function renderSummary() {
     players.forEach(player => {
       const items = playerGroups[player];
       text += `\n👤 **${player}** (${items.length} items):\n`;
-      text += items.map(item => `- ${itemPrefix}${item.id} (P${item.pageNum}, #${item.itemNum})`).join('\n') + "\n";
+      text += items.map(item => `- Page ${item.pageNum}, ${itemPrefix}${item.itemNum}`).join('\n') + "\n";
     });
     navigator.clipboard.writeText(text).then(() => alert("Summary copied to clipboard!"));
   };

@@ -128,10 +128,12 @@ body {
 .item-card.reserved {
   background-color: #2c1a1a;
   border-color: #5c2b2b;
+  cursor: default;
 }
 
 .item-card.reserved:hover {
   background-color: #3d2222;
+  transform: none;
 }
 
 .item-id {
