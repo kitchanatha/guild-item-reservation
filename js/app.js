@@ -78,30 +78,8 @@ async function init() {
   
   renderItems();
   renderSummary();
-  renderLogo();
 }
 
-function renderLogo() {
-  const trigger = getEl('admin-trigger');
-  if (!trigger) return;
-  
-  const claimedBy = reservations[999];
-  const isReserved = !!claimedBy;
-  const isAdminOpen = !getEl('admin-actions')?.classList.contains('hidden');
-  
-  if (isReserved) {
-    trigger.classList.add('reserved');
-    if (isAdminOpen) trigger.classList.add('admin-mode');
-    else trigger.classList.remove('admin-mode');
-  } else {
-    trigger.classList.remove('reserved', 'admin-mode');
-  }
-  
-  const statusEl = getEl('logo-status');
-  if (statusEl) {
-    statusEl.innerHTML = isReserved ? '<span style="color:#ff5252">🔴</span> ' + claimedBy : '<span style="color:#28a745">🟢</span> Available';
-  }
-}
 
 function loadLocalData() {
   try {
@@ -115,6 +93,8 @@ function loadLocalData() {
       if (id >= TIMER_OFFSET) {
         pageTimers[id - TIMER_OFFSET] = parseInt(reservations[key]);
         delete reservations[key];
+      } else if (id === 999) {
+        delete reservations[key];
       }
     }
 
@@ -126,13 +106,8 @@ function loadLocalData() {
         startGlobalTimer();
       }
     }
-    
-    // Default logo reservation if not present
-    if (!reservations[999]) {
-      reservations[999] = 'littleHome';
-    }
   } catch (e) {
-    reservations = { 999: 'littleHome' };
+    reservations = {};
   }
 }
 
@@ -207,7 +182,7 @@ async function connectSupabase() {
         applyRemoteConfig(row.ign);
       } else if (row.item_id >= TIMER_OFFSET) {
         pageTimers[row.item_id - TIMER_OFFSET] = parseInt(row.ign);
-      } else {
+      } else if (row.item_id !== 999) {
         reservations[row.item_id] = row.ign;
       }
     });
@@ -222,11 +197,6 @@ async function connectSupabase() {
       }
     }
 
-    // Default logo reservation if not present
-    if (!reservations[999]) {
-      reservations[999] = 'littleHome';
-    }
-    
     updateSyncStatus('online');
     
     // Real-time subscription
@@ -271,7 +241,6 @@ function handleRemoteChange(payload) {
   renderTimeout = setTimeout(() => {
     renderItems();
     renderSummary();
-    renderLogo();
     renderTimeout = null;
   }, 100);
 }
@@ -388,25 +357,12 @@ function setupAdminTrigger() {
   const trigger = getEl('admin-trigger');
   if (trigger) {
     trigger.addEventListener('click', () => {
-      const isAdminOpen = !getEl('admin-actions')?.classList.contains('hidden');
-      const isReserved = !!reservations[999];
-      
-      if (isAdminOpen && isReserved) {
-        unreserveItem(999);
-        return;
-      }
-
-      if (!isReserved) {
-        claimItem(999, trigger);
-      }
-
       adminClickCount++;
       if (adminClickCount >= 5) {
         getEl('admin-actions')?.classList.toggle('hidden');
         getEl('config-section')?.classList.toggle('hidden');
         adminClickCount = 0;
         renderItems(); 
-        renderLogo();  
       }
     });
   }
@@ -606,30 +562,21 @@ async function claimItem(itemId, itemCard) {
   if (success) {
     renderItems();
     renderSummary();
-    renderLogo();
   }
 }
 window.claimItem = claimItem;
 
 async function unreserveItem(itemId) {
-  const isLogo = itemId === 999;
   const claimedBy = reservations[itemId];
-  let msg = '';
-
-  if (isLogo) {
-    msg = `Are you sure you want to unreserve the Home Logo?\n👤 Claimed by: ${claimedBy || 'Unknown'}`;
-  } else {
-    const pageNum = Math.ceil(itemId / itemsPerPage);
-    const itemNum = ((itemId - 1) % itemsPerPage) + 1;
-    msg = `Are you sure you want to unreserve this item?\n\n📍 Location: Page ${pageNum}, ${itemPrefix}${itemNum}\n👤 Claimed by: ${claimedBy || 'Unknown'}`;
-  }
+  const pageNum = Math.ceil(itemId / itemsPerPage);
+  const itemNum = ((itemId - 1) % itemsPerPage) + 1;
+  const msg = `Are you sure you want to unreserve this item?\n\n📍 Location: Page ${pageNum}, ${itemPrefix}${itemNum}\n👤 Claimed by: ${claimedBy || 'Unknown'}`;
   
   if (confirm(msg)) {
     const success = await deleteReservation(itemId);
     if (success) {
       renderItems();
       renderSummary();
-      renderLogo();
     }
   }
 }
@@ -641,7 +588,6 @@ async function resetReservations() {
     if (success) {
       renderItems();
       renderSummary();
-      renderLogo();
       alert("All reservations have been reset.");
     }
   }
@@ -682,7 +628,6 @@ function importData() {
             safeSet('guild_claims', JSON.stringify(reservations));
             renderItems();
             renderSummary();
-            renderLogo();
             alert("Data imported locally!");
           }
         }
@@ -706,13 +651,9 @@ function renderSummary() {
     if (!playerGroups[ign]) playerGroups[ign] = [];
     
     const id = parseInt(itemId);
-    if (id === 999) {
-      playerGroups[ign].push({ id, label: '🏠 Home Logo' });
-    } else {
-      const pageNum = Math.ceil(id / itemsPerPage);
-      const itemNum = ((id - 1) % itemsPerPage) + 1;
-      playerGroups[ign].push({ id, pageNum, itemNum, label: `Page ${pageNum}, ${itemPrefix}${itemNum}` });
-    }
+    const pageNum = Math.ceil(id / itemsPerPage);
+    const itemNum = ((id - 1) % itemsPerPage) + 1;
+    playerGroups[ign].push({ id, pageNum, itemNum, label: `Page ${pageNum}, ${itemPrefix}${itemNum}` });
   });
 
   const players = Object.keys(playerGroups).sort();
@@ -724,13 +665,11 @@ function renderSummary() {
 
   const gridReserved = Object.keys(reservations).filter(k => {
     const id = parseInt(k);
-    return id !== 0 && id !== 999 && id < TIMER_OFFSET;
+    return id !== 0 && id < TIMER_OFFSET;
   }).length;
-  const logoReserved = !!reservations[999];
   const stats = document.createElement('p');
   stats.className = 'summary-stats';
   let progressText = `Items: ${gridReserved} / ${totalItems} claimed (${Math.round((gridReserved/totalItems)*100)}%)`;
-  if (logoReserved) progressText += ` • 🏠 Home Logo is Reserved`;
   stats.textContent = progressText;
   container.appendChild(stats);
   
