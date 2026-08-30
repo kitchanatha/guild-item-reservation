@@ -11,6 +11,7 @@ const DEFAULT_SB_KEY = 'sb_publishable_7UW1aict4fPrLAdrPCLvaQ_4j0acB_J';
 let currentPage = 1;
 let reservations = {};
 let itemClickCounts = {};
+let itemClickTimers = {};
 let supabase = null;
 let syncEnabled = false;
 let renderTimeout = null;
@@ -297,6 +298,8 @@ async function clearAllReservations() {
   }
   reservations = {};
   itemClickCounts = {};
+  Object.values(itemClickTimers).forEach(t => clearTimeout(t));
+  itemClickTimers = {};
   localStorage.removeItem('guild_claims');
   return true;
 }
@@ -313,6 +316,7 @@ function setupAdminTrigger() {
         getEl('admin-actions')?.classList.toggle('hidden');
         getEl('config-section')?.classList.toggle('hidden');
         adminClickCount = 0;
+        renderItems(); // Refresh items to apply/remove admin-mode styles
       }
     });
   }
@@ -330,17 +334,38 @@ function renderItems() {
     const itemId = i + 1;
     const claimedBy = reservations[itemId];
     const isReserved = !!claimedBy;
+    const isAdminOpen = !getEl('admin-actions')?.classList.contains('hidden');
     
     const itemElement = document.createElement('div');
-    itemElement.className = `item-card ${isReserved ? 'reserved' : ''}`;
-    itemElement.onclick = () => {
+    itemElement.className = `item-card ${isReserved ? 'reserved' : ''} ${isReserved && isAdminOpen ? 'admin-mode' : ''}`;
+    itemElement.onclick = (e) => {
       if (!isReserved) {
         claimItem(itemId, itemElement);
       } else {
+        // If admin panel is open, or Ctrl+Alt is pressed, allow instant unreserve
+        if (isAdminOpen || (e.ctrlKey && e.altKey)) {
+           unreserveItem(itemId);
+           return;
+        }
+
+        // Hidden feature logic: 5-click combo within 2 seconds
         itemClickCounts[itemId] = (itemClickCounts[itemId] || 0) + 1;
+        
+        // Visual feedback
+        itemElement.classList.remove('pulse-hint', 'shake-hint');
+        void itemElement.offsetWidth; // Trigger reflow
+        itemElement.classList.add(itemClickCounts[itemId] >= 4 ? 'shake-hint' : 'pulse-hint');
+        
+        // Reset combo timer
+        if (itemClickTimers[itemId]) clearTimeout(itemClickTimers[itemId]);
+        itemClickTimers[itemId] = setTimeout(() => {
+          itemClickCounts[itemId] = 0;
+        }, 2000);
+
         if (itemClickCounts[itemId] === 5) {
           unreserveItem(itemId);
           itemClickCounts[itemId] = 0;
+          if (itemClickTimers[itemId]) clearTimeout(itemClickTimers[itemId]);
         }
       }
     };
@@ -518,7 +543,11 @@ window.claimItem = claimItem;
 async function unreserveItem(itemId) {
   const pageNum = Math.ceil(itemId / itemsPerPage);
   const itemNum = ((itemId - 1) % itemsPerPage) + 1;
-  if (confirm(`Are you sure you want to unreserve Item (Page ${pageNum}, ${itemPrefix}${itemNum})?`)) {
+  const claimedBy = reservations[itemId];
+  
+  const msg = `Are you sure you want to unreserve this item?\n\n📍 Location: Page ${pageNum}, ${itemPrefix}${itemNum}\n👤 Claimed by: ${claimedBy || 'Unknown'}`;
+  
+  if (confirm(msg)) {
     const success = await deleteReservation(itemId);
     if (success) {
       renderItems();
