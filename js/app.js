@@ -10,6 +10,7 @@ const DEFAULT_SB_KEY = 'sb_publishable_7UW1aict4fPrLAdrPCLvaQ_4j0acB_J';
 
 let currentPage = 1;
 let reservations = {};
+let itemClickCounts = {};
 let supabase = null;
 let syncEnabled = false;
 
@@ -288,6 +289,7 @@ async function clearAllReservations() {
     }
   }
   reservations = {};
+  itemClickCounts = {};
   localStorage.removeItem('guild_claims');
   return true;
 }
@@ -324,7 +326,17 @@ function renderItems() {
     
     const itemElement = document.createElement('div');
     itemElement.className = `item-card ${isReserved ? 'reserved' : ''}`;
-    itemElement.onclick = () => !isReserved && claimItem(itemId);
+    itemElement.onclick = () => {
+      if (!isReserved) {
+        claimItem(itemId);
+      } else {
+        itemClickCounts[itemId] = (itemClickCounts[itemId] || 0) + 1;
+        if (itemClickCounts[itemId] === 5) {
+          unreserveItem(itemId);
+          itemClickCounts[itemId] = 0;
+        }
+      }
+    };
     
     const statusDiv = document.createElement('div');
     statusDiv.className = 'item-status';

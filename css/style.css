@@ -212,6 +212,61 @@ button:disabled {
 .discord-btn:hover {
   background-color: #4752c4;
 }
+
+.main-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.logo-trigger {
+  display: inline-block;
+  cursor: default;
+  user-select: none;
+  padding: 0 5px;
+}
+
+.header-logo {
+  height: 50px;
+  width: auto;
+  vertical-align: middle;
+}
+
+.about-section {
+  margin-top: 50px;
+  padding: 20px 0;
+  color: #888;
+}
+
+.about-section hr {
+  border-top: 1px solid #333;
+  margin-bottom: 30px;
+}
+
+.about-logos {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  margin-bottom: 15px;
+}
+
+.about-logo {
+  height: 80px;
+  width: auto;
+  opacity: 0.8;
+  transition: opacity 0.3s;
+}
+
+.about-logo:hover {
+  opacity: 1;
+}
+
+.about-text {
+  font-size: 0.9em;
+  font-style: italic;
+}
  
 .user-settings {
   margin-bottom: 30px;
