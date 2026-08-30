@@ -14,6 +14,9 @@ let supabase = null;
 let syncEnabled = false;
 let renderTimeout = null;
 let isAppEnabled = false;
+let adminClickCount = 0;
+let enabledPages = new Set();
+let timerInterval = null;
 
 function getEl(id) {
   return document.getElementById(id);
@@ -30,8 +33,6 @@ function safeSet(key, value) {
 }
 
 async function init() {
-  setAllButtonsState(true);
-  
   setupAdminTrigger();
   loadSupabaseConfig();
   
@@ -308,10 +309,13 @@ function setupAdminTrigger() {
   const trigger = getEl('admin-trigger');
   if (trigger) {
     trigger.addEventListener('click', () => {
-      if (!isAppEnabled) return;
-      getEl('admin-actions')?.classList.toggle('hidden');
-      getEl('config-section')?.classList.toggle('hidden');
-      renderItems(); // Refresh items to apply/remove admin-mode styles
+      adminClickCount++;
+      if (adminClickCount >= 5) {
+        getEl('admin-actions')?.classList.toggle('hidden');
+        getEl('config-section')?.classList.toggle('hidden');
+        adminClickCount = 0;
+        renderItems(); // Refresh items to apply/remove admin-mode styles
+      }
     });
   }
 }
@@ -321,6 +325,20 @@ function renderItems() {
   if (!container) return;
   container.innerHTML = '';
   
+  const isPageEnabled = enabledPages.has(currentPage);
+  const enableBtn = getEl('enable-timer-btn');
+  if (enableBtn) {
+    if (isPageEnabled) {
+      enableBtn.classList.add('hidden');
+    } else {
+      enableBtn.classList.remove('hidden');
+      if (!timerInterval) {
+        enableBtn.disabled = false;
+        enableBtn.textContent = `🚀 Click to Enable Page ${currentPage} Items (Wait 3s)`;
+      }
+    }
+  }
+
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
   
@@ -331,9 +349,9 @@ function renderItems() {
     const isAdminOpen = !getEl('admin-actions')?.classList.contains('hidden');
     
     const itemElement = document.createElement('div');
-    itemElement.className = `item-card ${isReserved ? 'reserved' : ''} ${isReserved && isAdminOpen ? 'admin-mode' : ''} ${!isAppEnabled ? 'disabled' : ''}`;
+    itemElement.className = `item-card ${isReserved ? 'reserved' : ''} ${isReserved && isAdminOpen ? 'admin-mode' : ''} ${!isPageEnabled ? 'disabled' : ''}`;
     itemElement.onclick = () => {
-      if (!isAppEnabled) return;
+      if (!isPageEnabled) return;
       if (!isReserved) {
         claimItem(itemId, itemElement);
       } else if (isAdminOpen) {
@@ -368,6 +386,10 @@ function changePage(delta) {
   const newPage = currentPage + delta;
   if (newPage >= 1 && newPage <= totalPages) {
     currentPage = newPage;
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
     renderItems();
   }
 }
@@ -647,7 +669,7 @@ function renderSummary() {
   const discordBtn = document.createElement('button');
   discordBtn.className = 'discord-btn';
   discordBtn.innerHTML = '📋 Copy for Discord';
-  discordBtn.disabled = !isAppEnabled; // Set initial state
+  discordBtn.disabled = false; // Always enabled for summary
   discordBtn.onclick = () => {
     let text = "**📊 littleHome Item Reservation Summary**\n";
     players.forEach(player => {
@@ -681,20 +703,24 @@ function setAllButtonsState(disabled) {
 
 function startEnableTimer() {
   const btn = getEl('enable-timer-btn');
-  if (!btn) return;
+  if (!btn || btn.disabled) return;
   
   let timeLeft = 3;
   btn.disabled = true;
   btn.textContent = `⏳ Enabling in ${timeLeft}s...`;
   
-  const timer = setInterval(() => {
+  const pageToEnable = currentPage;
+  timerInterval = setInterval(() => {
     timeLeft--;
     if (timeLeft > 0) {
       btn.textContent = `⏳ Enabling in ${timeLeft}s...`;
     } else {
-      clearInterval(timer);
-      setAllButtonsState(false);
-      btn.classList.add('hidden');
+      clearInterval(timerInterval);
+      timerInterval = null;
+      enabledPages.add(pageToEnable);
+      if (currentPage === pageToEnable) {
+        renderItems();
+      }
     }
   }, 1000);
 }
