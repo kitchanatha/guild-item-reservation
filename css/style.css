@@ -146,26 +146,6 @@ body {
   border-color: #ff5252;
 }
 
-/* Animations for hidden feature */
-@keyframes secret-pulse {
-  0% { transform: scale(1); }
-  50% { transform: scale(0.96); border-color: #5c2b2b; }
-  100% { transform: scale(1); }
-}
-
-@keyframes secret-shake {
-  0%, 100% { transform: translateX(0); }
-  25% { transform: translateX(-2px); }
-  75% { transform: translateX(2px); }
-}
-
-.pulse-hint {
-  animation: secret-pulse 0.2s ease-in-out;
-}
-
-.shake-hint {
-  animation: secret-shake 0.2s ease-in-out;
-}
 
 .item-id {
   font-weight: bold;
@@ -254,9 +234,14 @@ button:disabled {
 
 .logo-trigger {
   display: inline-block;
-  cursor: default;
+  cursor: pointer;
   user-select: none;
   padding: 0 5px;
+  transition: transform 0.2s;
+}
+
+.logo-trigger:hover {
+  transform: scale(1.1);
 }
 
 .header-logo {

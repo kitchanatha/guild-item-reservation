@@ -10,8 +10,6 @@ const DEFAULT_SB_KEY = 'sb_publishable_7UW1aict4fPrLAdrPCLvaQ_4j0acB_J';
 
 let currentPage = 1;
 let reservations = {};
-let itemClickCounts = {};
-let itemClickTimers = {};
 let supabase = null;
 let syncEnabled = false;
 let renderTimeout = null;
@@ -297,9 +295,6 @@ async function clearAllReservations() {
     }
   }
   reservations = {};
-  itemClickCounts = {};
-  Object.values(itemClickTimers).forEach(t => clearTimeout(t));
-  itemClickTimers = {};
   localStorage.removeItem('guild_claims');
   return true;
 }
@@ -307,17 +302,12 @@ async function clearAllReservations() {
 // --- UI Logic ---
 
 function setupAdminTrigger() {
-  let adminClickCount = 0;
   const trigger = getEl('admin-trigger');
   if (trigger) {
     trigger.addEventListener('click', () => {
-      adminClickCount++;
-      if (adminClickCount >= 5) {
-        getEl('admin-actions')?.classList.toggle('hidden');
-        getEl('config-section')?.classList.toggle('hidden');
-        adminClickCount = 0;
-        renderItems(); // Refresh items to apply/remove admin-mode styles
-      }
+      getEl('admin-actions')?.classList.toggle('hidden');
+      getEl('config-section')?.classList.toggle('hidden');
+      renderItems(); // Refresh items to apply/remove admin-mode styles
     });
   }
 }
@@ -338,35 +328,11 @@ function renderItems() {
     
     const itemElement = document.createElement('div');
     itemElement.className = `item-card ${isReserved ? 'reserved' : ''} ${isReserved && isAdminOpen ? 'admin-mode' : ''}`;
-    itemElement.onclick = (e) => {
+    itemElement.onclick = () => {
       if (!isReserved) {
         claimItem(itemId, itemElement);
-      } else {
-        // If admin panel is open, or Ctrl+Alt is pressed, allow instant unreserve
-        if (isAdminOpen || (e.ctrlKey && e.altKey)) {
-           unreserveItem(itemId);
-           return;
-        }
-
-        // Hidden feature logic: 5-click combo within 2 seconds
-        itemClickCounts[itemId] = (itemClickCounts[itemId] || 0) + 1;
-        
-        // Visual feedback
-        itemElement.classList.remove('pulse-hint', 'shake-hint');
-        void itemElement.offsetWidth; // Trigger reflow
-        itemElement.classList.add(itemClickCounts[itemId] >= 4 ? 'shake-hint' : 'pulse-hint');
-        
-        // Reset combo timer
-        if (itemClickTimers[itemId]) clearTimeout(itemClickTimers[itemId]);
-        itemClickTimers[itemId] = setTimeout(() => {
-          itemClickCounts[itemId] = 0;
-        }, 2000);
-
-        if (itemClickCounts[itemId] === 5) {
-          unreserveItem(itemId);
-          itemClickCounts[itemId] = 0;
-          if (itemClickTimers[itemId]) clearTimeout(itemClickTimers[itemId]);
-        }
+      } else if (isAdminOpen) {
+        unreserveItem(itemId);
       }
     };
     
