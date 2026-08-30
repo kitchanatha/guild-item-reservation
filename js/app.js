@@ -13,6 +13,7 @@ let reservations = {};
 let supabase = null;
 let syncEnabled = false;
 let renderTimeout = null;
+let isAppEnabled = false;
 
 function getEl(id) {
   return document.getElementById(id);
@@ -29,6 +30,8 @@ function safeSet(key, value) {
 }
 
 async function init() {
+  setAllButtonsState(true);
+  
   setupAdminTrigger();
   loadSupabaseConfig();
   
@@ -305,6 +308,7 @@ function setupAdminTrigger() {
   const trigger = getEl('admin-trigger');
   if (trigger) {
     trigger.addEventListener('click', () => {
+      if (!isAppEnabled) return;
       getEl('admin-actions')?.classList.toggle('hidden');
       getEl('config-section')?.classList.toggle('hidden');
       renderItems(); // Refresh items to apply/remove admin-mode styles
@@ -327,8 +331,9 @@ function renderItems() {
     const isAdminOpen = !getEl('admin-actions')?.classList.contains('hidden');
     
     const itemElement = document.createElement('div');
-    itemElement.className = `item-card ${isReserved ? 'reserved' : ''} ${isReserved && isAdminOpen ? 'admin-mode' : ''}`;
+    itemElement.className = `item-card ${isReserved ? 'reserved' : ''} ${isReserved && isAdminOpen ? 'admin-mode' : ''} ${!isAppEnabled ? 'disabled' : ''}`;
     itemElement.onclick = () => {
+      if (!isAppEnabled) return;
       if (!isReserved) {
         claimItem(itemId, itemElement);
       } else if (isAdminOpen) {
@@ -642,6 +647,7 @@ function renderSummary() {
   const discordBtn = document.createElement('button');
   discordBtn.className = 'discord-btn';
   discordBtn.innerHTML = '📋 Copy for Discord';
+  discordBtn.disabled = !isAppEnabled; // Set initial state
   discordBtn.onclick = () => {
     let text = "**📊 littleHome Item Reservation Summary**\n";
     players.forEach(player => {
@@ -653,5 +659,45 @@ function renderSummary() {
   };
   container.appendChild(discordBtn);
 }
+
+function setAllButtonsState(disabled) {
+  isAppEnabled = !disabled;
+  const elements = document.querySelectorAll('button, input, select');
+  elements.forEach(el => {
+    if (el.id !== 'enable-timer-btn') {
+      el.disabled = disabled;
+    }
+  });
+  
+  const trigger = getEl('admin-trigger');
+  if (trigger) {
+    if (disabled) trigger.classList.add('disabled');
+    else trigger.classList.remove('disabled');
+  }
+  
+  // Refresh items to apply/remove disabled visual state if needed
+  renderItems();
+}
+
+function startEnableTimer() {
+  const btn = getEl('enable-timer-btn');
+  if (!btn) return;
+  
+  let timeLeft = 3;
+  btn.disabled = true;
+  btn.textContent = `⏳ Enabling in ${timeLeft}s...`;
+  
+  const timer = setInterval(() => {
+    timeLeft--;
+    if (timeLeft > 0) {
+      btn.textContent = `⏳ Enabling in ${timeLeft}s...`;
+    } else {
+      clearInterval(timer);
+      setAllButtonsState(false);
+      btn.classList.add('hidden');
+    }
+  }, 1000);
+}
+window.startEnableTimer = startEnableTimer;
 
 init();
