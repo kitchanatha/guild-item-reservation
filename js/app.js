@@ -74,14 +74,42 @@ async function init() {
   
   renderItems();
   renderSummary();
+  renderLogo();
+}
+
+function renderLogo() {
+  const trigger = getEl('admin-trigger');
+  if (!trigger) return;
+  
+  const claimedBy = reservations[999];
+  const isReserved = !!claimedBy;
+  const isAdminOpen = !getEl('admin-actions')?.classList.contains('hidden');
+  
+  if (isReserved) {
+    trigger.classList.add('reserved');
+    if (isAdminOpen) trigger.classList.add('admin-mode');
+    else trigger.classList.remove('admin-mode');
+  } else {
+    trigger.classList.remove('reserved', 'admin-mode');
+  }
+  
+  const statusEl = getEl('logo-status');
+  if (statusEl) {
+    statusEl.innerHTML = isReserved ? '<span style="color:#ff5252">🔴</span> ' + claimedBy : '<span style="color:#28a745">🟢</span> Available';
+  }
 }
 
 function loadLocalData() {
   try {
     const saved = safeGet('guild_claims');
     reservations = saved ? JSON.parse(saved) : {};
+    
+    // Default logo reservation if not present
+    if (!reservations[999]) {
+      reservations[999] = 'littleHome';
+    }
   } catch (e) {
-    reservations = {};
+    reservations = { 999: 'littleHome' };
   }
 }
 
@@ -157,6 +185,11 @@ async function connectSupabase() {
         reservations[row.item_id] = row.ign;
       }
     });
+
+    // Default logo reservation if not present
+    if (!reservations[999]) {
+      reservations[999] = 'littleHome';
+    }
     
     updateSyncStatus('online');
     
@@ -193,6 +226,7 @@ function handleRemoteChange(payload) {
   renderTimeout = setTimeout(() => {
     renderItems();
     renderSummary();
+    renderLogo();
     renderTimeout = null;
   }, 100);
 }
@@ -309,12 +343,25 @@ function setupAdminTrigger() {
   const trigger = getEl('admin-trigger');
   if (trigger) {
     trigger.addEventListener('click', () => {
+      const isAdminOpen = !getEl('admin-actions')?.classList.contains('hidden');
+      const isReserved = !!reservations[999];
+      
+      if (isAdminOpen && isReserved) {
+        unreserveItem(999);
+        return;
+      }
+
+      if (!isReserved) {
+        claimItem(999, trigger);
+      }
+
       adminClickCount++;
       if (adminClickCount >= 5) {
         getEl('admin-actions')?.classList.toggle('hidden');
         getEl('config-section')?.classList.toggle('hidden');
         adminClickCount = 0;
-        renderItems(); // Refresh items to apply/remove admin-mode styles
+        renderItems(); 
+        renderLogo();  
       }
     });
   }
@@ -529,22 +576,30 @@ async function claimItem(itemId, itemCard) {
   if (success) {
     renderItems();
     renderSummary();
+    renderLogo();
   }
 }
 window.claimItem = claimItem;
 
 async function unreserveItem(itemId) {
-  const pageNum = Math.ceil(itemId / itemsPerPage);
-  const itemNum = ((itemId - 1) % itemsPerPage) + 1;
+  const isLogo = itemId === 999;
   const claimedBy = reservations[itemId];
-  
-  const msg = `Are you sure you want to unreserve this item?\n\n📍 Location: Page ${pageNum}, ${itemPrefix}${itemNum}\n👤 Claimed by: ${claimedBy || 'Unknown'}`;
+  let msg = '';
+
+  if (isLogo) {
+    msg = `Are you sure you want to unreserve the Home Logo?\n👤 Claimed by: ${claimedBy || 'Unknown'}`;
+  } else {
+    const pageNum = Math.ceil(itemId / itemsPerPage);
+    const itemNum = ((itemId - 1) % itemsPerPage) + 1;
+    msg = `Are you sure you want to unreserve this item?\n\n📍 Location: Page ${pageNum}, ${itemPrefix}${itemNum}\n👤 Claimed by: ${claimedBy || 'Unknown'}`;
+  }
   
   if (confirm(msg)) {
     const success = await deleteReservation(itemId);
     if (success) {
       renderItems();
       renderSummary();
+      renderLogo();
     }
   }
 }
@@ -556,6 +611,7 @@ async function resetReservations() {
     if (success) {
       renderItems();
       renderSummary();
+      renderLogo();
       alert("All reservations have been reset.");
     }
   }
@@ -596,6 +652,7 @@ function importData() {
             safeSet('guild_claims', JSON.stringify(reservations));
             renderItems();
             renderSummary();
+            renderLogo();
             alert("Data imported locally!");
           }
         }
@@ -617,10 +674,15 @@ function renderSummary() {
     const ign = reservations[itemId];
     if (!ign) return;
     if (!playerGroups[ign]) playerGroups[ign] = [];
+    
     const id = parseInt(itemId);
-    const pageNum = Math.ceil(id / itemsPerPage);
-    const itemNum = ((id - 1) % itemsPerPage) + 1;
-    playerGroups[ign].push({ id, pageNum, itemNum });
+    if (id === 999) {
+      playerGroups[ign].push({ id, label: '🏠 Home Logo' });
+    } else {
+      const pageNum = Math.ceil(id / itemsPerPage);
+      const itemNum = ((id - 1) % itemsPerPage) + 1;
+      playerGroups[ign].push({ id, pageNum, itemNum, label: `Page ${pageNum}, ${itemPrefix}${itemNum}` });
+    }
   });
 
   const players = Object.keys(playerGroups).sort();
@@ -630,10 +692,13 @@ function renderSummary() {
   title.textContent = '📊 Reservation Summary';
   container.appendChild(title);
 
-  const totalReserved = Object.keys(reservations).filter(k => k !== "0").length;
+  const gridReserved = Object.keys(reservations).filter(k => k !== "0" && k !== "999").length;
+  const logoReserved = !!reservations[999];
   const stats = document.createElement('p');
   stats.className = 'summary-stats';
-  stats.textContent = `Progress: ${totalReserved} / ${totalItems} items claimed (${Math.round((totalReserved/totalItems)*100)}%)`;
+  let progressText = `Items: ${gridReserved} / ${totalItems} claimed (${Math.round((gridReserved/totalItems)*100)}%)`;
+  if (logoReserved) progressText += ` • 🏠 Home Logo is Reserved`;
+  stats.textContent = progressText;
   container.appendChild(stats);
   
   if (players.length === 0) {
@@ -658,7 +723,7 @@ function renderSummary() {
     const ul = document.createElement('ul');
     items.forEach(item => {
       const li = document.createElement('li');
-      li.textContent = `Page ${item.pageNum}, ${itemPrefix}${item.itemNum}`;
+      li.textContent = item.label;
       ul.appendChild(li);
     });
     card.appendChild(ul);
@@ -675,7 +740,7 @@ function renderSummary() {
     players.forEach(player => {
       const items = playerGroups[player];
       text += `\n👤 **${player}** (${items.length} items):\n`;
-      text += items.map(item => `- Page ${item.pageNum}, ${itemPrefix}${item.itemNum}`).join('\n') + "\n";
+      text += items.map(item => `- ${item.label}`).join('\n') + "\n";
     });
     navigator.clipboard.writeText(text).then(() => alert("Summary copied to clipboard!"));
   };
