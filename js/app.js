@@ -16,7 +16,11 @@ let renderTimeout = null;
 let isAppEnabled = false;
 let adminClickCount = 0;
 let enabledPages = new Set();
+let pageTimers = {}; // pageNum -> startTime
 let timerInterval = null;
+
+const TIMER_OFFSET = 10000;
+const TIMER_DURATION = 3000;
 
 function getEl(id) {
   return document.getElementById(id);
@@ -104,6 +108,25 @@ function loadLocalData() {
     const saved = safeGet('guild_claims');
     reservations = saved ? JSON.parse(saved) : {};
     
+    // Identify timers in local data
+    pageTimers = {};
+    for (const key in reservations) {
+      const id = parseInt(key);
+      if (id >= TIMER_OFFSET) {
+        pageTimers[id - TIMER_OFFSET] = parseInt(reservations[key]);
+        delete reservations[key];
+      }
+    }
+
+    const now = Date.now();
+    for (const pageNum in pageTimers) {
+      if (now - pageTimers[pageNum] >= TIMER_DURATION) {
+        enabledPages.add(parseInt(pageNum));
+      } else {
+        startGlobalTimer();
+      }
+    }
+    
     // Default logo reservation if not present
     if (!reservations[999]) {
       reservations[999] = 'littleHome';
@@ -178,13 +201,26 @@ async function connectSupabase() {
     
     // Convert array to object mapping
     reservations = {};
+    pageTimers = {};
     data.forEach(row => {
       if (row.item_id === 0) {
         applyRemoteConfig(row.ign);
+      } else if (row.item_id >= TIMER_OFFSET) {
+        pageTimers[row.item_id - TIMER_OFFSET] = parseInt(row.ign);
       } else {
         reservations[row.item_id] = row.ign;
       }
     });
+
+    // Check expired timers
+    const now = Date.now();
+    for (const pageNum in pageTimers) {
+      if (now - pageTimers[pageNum] >= TIMER_DURATION) {
+        enabledPages.add(parseInt(pageNum));
+      } else {
+        startGlobalTimer();
+      }
+    }
 
     // Default logo reservation if not present
     if (!reservations[999]) {
@@ -212,6 +248,15 @@ function handleRemoteChange(payload) {
   if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
     if (payload.new.item_id === 0) {
       applyRemoteConfig(payload.new.ign);
+    } else if (payload.new.item_id >= TIMER_OFFSET) {
+      const pageNum = payload.new.item_id - TIMER_OFFSET;
+      const startTime = parseInt(payload.new.ign);
+      pageTimers[pageNum] = startTime;
+      if (Date.now() - startTime < TIMER_DURATION) {
+        startGlobalTimer();
+      } else {
+        enabledPages.add(pageNum);
+      }
     } else {
       reservations[payload.new.item_id] = payload.new.ign;
     }
@@ -372,20 +417,9 @@ function renderItems() {
   if (!container) return;
   container.innerHTML = '';
   
-  const isPageEnabled = enabledPages.has(currentPage);
-  const enableBtn = getEl('enable-timer-btn');
-  if (enableBtn) {
-    if (isPageEnabled) {
-      enableBtn.classList.add('hidden');
-    } else {
-      enableBtn.classList.remove('hidden');
-      if (!timerInterval) {
-        enableBtn.disabled = false;
-        enableBtn.textContent = `🚀 Click to Enable Page ${currentPage} Items (Wait 3s)`;
-      }
-    }
-  }
+  updateTimerButton();
 
+  const isPageEnabled = enabledPages.has(currentPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
   
@@ -433,10 +467,6 @@ function changePage(delta) {
   const newPage = currentPage + delta;
   if (newPage >= 1 && newPage <= totalPages) {
     currentPage = newPage;
-    if (timerInterval) {
-      clearInterval(timerInterval);
-      timerInterval = null;
-    }
     renderItems();
   }
 }
@@ -670,7 +700,7 @@ function renderSummary() {
   
   const playerGroups = {};
   Object.keys(reservations).forEach(itemId => {
-    if (itemId === "0") return; // Skip config record
+    if (itemId === "0" || parseInt(itemId) >= TIMER_OFFSET) return; // Skip config and timers
     const ign = reservations[itemId];
     if (!ign) return;
     if (!playerGroups[ign]) playerGroups[ign] = [];
@@ -692,7 +722,10 @@ function renderSummary() {
   title.textContent = '📊 Reservation Summary';
   container.appendChild(title);
 
-  const gridReserved = Object.keys(reservations).filter(k => k !== "0" && k !== "999").length;
+  const gridReserved = Object.keys(reservations).filter(k => {
+    const id = parseInt(k);
+    return id !== 0 && id !== 999 && id < TIMER_OFFSET;
+  }).length;
   const logoReserved = !!reservations[999];
   const stats = document.createElement('p');
   stats.className = 'summary-stats';
@@ -766,28 +799,82 @@ function setAllButtonsState(disabled) {
   renderItems();
 }
 
-function startEnableTimer() {
+async function startEnableTimer() {
   const btn = getEl('enable-timer-btn');
   if (!btn || btn.disabled) return;
   
-  let timeLeft = 3;
-  btn.disabled = true;
-  btn.textContent = `⏳ Enabling in ${timeLeft}s...`;
-  
   const pageToEnable = currentPage;
+  const startTime = Date.now();
+  
+  if (syncEnabled && supabase) {
+    const { error } = await supabase
+      .from('reservations')
+      .insert({ item_id: TIMER_OFFSET + pageToEnable, ign: startTime.toString() });
+    
+    if (error && error.code !== '23505') { // Ignore unique violation
+      console.error("Sync timer failed:", error);
+    }
+  }
+
+  pageTimers[pageToEnable] = startTime;
+  startGlobalTimer();
+  renderItems();
+}
+
+function startGlobalTimer() {
+  if (timerInterval) return;
+  
   timerInterval = setInterval(() => {
-    timeLeft--;
-    if (timeLeft > 0) {
-      btn.textContent = `⏳ Enabling in ${timeLeft}s...`;
+    const now = Date.now();
+    let stillRunning = false;
+    
+    for (const pageNum in pageTimers) {
+      if (enabledPages.has(parseInt(pageNum))) continue;
+      
+      const elapsed = now - pageTimers[pageNum];
+      if (elapsed >= TIMER_DURATION) {
+        enabledPages.add(parseInt(pageNum));
+        if (currentPage === parseInt(pageNum)) renderItems();
+      } else {
+        stillRunning = true;
+      }
+    }
+    
+    if (stillRunning) {
+      updateTimerButton();
     } else {
       clearInterval(timerInterval);
       timerInterval = null;
-      enabledPages.add(pageToEnable);
-      if (currentPage === pageToEnable) {
-        renderItems();
-      }
     }
-  }, 1000);
+  }, 100);
+}
+
+function updateTimerButton() {
+  const btn = getEl('enable-timer-btn');
+  if (!btn) return;
+
+  const isPageEnabled = enabledPages.has(currentPage);
+  const startTime = pageTimers[currentPage];
+
+  if (isPageEnabled) {
+    btn.classList.add('hidden');
+    return;
+  }
+
+  if (startTime) {
+    const elapsed = Date.now() - startTime;
+    const timeLeft = Math.ceil((TIMER_DURATION - elapsed) / 1000);
+    if (timeLeft > 0) {
+      btn.classList.remove('hidden');
+      btn.disabled = true;
+      btn.textContent = `⏳ Enabling in ${timeLeft}s...`;
+      return;
+    }
+  }
+
+  btn.classList.remove('hidden');
+  btn.disabled = false;
+  btn.textContent = `🚀 Click to Enable Page ${currentPage} Items (Wait 3s)`;
 }
 window.startEnableTimer = startEnableTimer;
 
