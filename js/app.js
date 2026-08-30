@@ -358,7 +358,7 @@ function setupAdminTrigger() {
   if (trigger) {
     trigger.addEventListener('click', () => {
       adminClickCount++;
-      if (adminClickCount >= 5) {
+      if (adminClickCount >= 10) {
         getEl('admin-actions')?.classList.toggle('hidden');
         getEl('config-section')?.classList.toggle('hidden');
         adminClickCount = 0;
@@ -403,6 +403,18 @@ function renderItems() {
     const displayId = (i - startIndex) + 1;
     itemElement.innerHTML = `<div class="item-id">${itemPrefix}${displayId}</div>`;
     itemElement.appendChild(statusDiv);
+
+    if (isReserved && isAdminOpen) {
+      const unreserveBtn = document.createElement('button');
+      unreserveBtn.className = 'unreserve-btn';
+      unreserveBtn.textContent = '🔓 Unclaim';
+      unreserveBtn.onclick = (e) => {
+        e.stopPropagation();
+        unreserveItem(itemId);
+      };
+      itemElement.appendChild(unreserveBtn);
+    }
+
     container.appendChild(itemElement);
   }
 
