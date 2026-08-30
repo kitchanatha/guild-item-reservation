@@ -13,6 +13,7 @@ let reservations = {};
 let itemClickCounts = {};
 let supabase = null;
 let syncEnabled = false;
+let renderTimeout = null;
 
 function getEl(id) {
   return document.getElementById(id);
@@ -183,8 +184,14 @@ function handleRemoteChange(payload) {
       delete reservations[payload.old.item_id];
     }
   }
-  renderItems();
-  renderSummary();
+  
+  // Debounce rendering for high concurrency
+  if (renderTimeout) clearTimeout(renderTimeout);
+  renderTimeout = setTimeout(() => {
+    renderItems();
+    renderSummary();
+    renderTimeout = null;
+  }, 100);
 }
 
 function applyRemoteConfig(configStr) {
@@ -328,7 +335,7 @@ function renderItems() {
     itemElement.className = `item-card ${isReserved ? 'reserved' : ''}`;
     itemElement.onclick = () => {
       if (!isReserved) {
-        claimItem(itemId);
+        claimItem(itemId, itemElement);
       } else {
         itemClickCounts[itemId] = (itemClickCounts[itemId] || 0) + 1;
         if (itemClickCounts[itemId] === 5) {
@@ -454,7 +461,7 @@ function saveGlobalIGN() {
 }
 window.saveGlobalIGN = saveGlobalIGN;
 
-async function claimItem(itemId) {
+async function claimItem(itemId, itemCard) {
   const input = getEl('global-ign');
   const ign = input ? input.value.trim() : '';
   
@@ -466,8 +473,41 @@ async function claimItem(itemId) {
     }
     return alert("Please enter your IGN at the top first!");
   }
+
+  // Prevent double-claiming if already known locally
+  if (reservations[itemId]) {
+    return alert("This item is already reserved!");
+  }
   
-  const success = await persistReservation(itemId, ign);
+  // Visual feedback
+  if (itemCard) itemCard.style.opacity = '0.5';
+
+  let success = false;
+  if (syncEnabled && supabase) {
+    // For cloud sync, use INSERT to prevent overwriting someone else's claim (first-come, first-served)
+    const { error } = await supabase
+      .from('reservations')
+      .insert({ item_id: itemId, ign: ign });
+      
+    if (error) {
+      if (error.code === '23505') { // Unique violation
+        alert("Too slow! Someone else just claimed this item.");
+      } else {
+        alert("Sync failed: " + error.message);
+      }
+      success = false;
+    } else {
+      success = true;
+      reservations[itemId] = ign;
+      safeSet('guild_claims', JSON.stringify(reservations));
+    }
+  } else {
+    // Local mode
+    success = await persistReservation(itemId, ign);
+  }
+
+  if (itemCard) itemCard.style.opacity = '1';
+  
   if (success) {
     renderItems();
     renderSummary();
