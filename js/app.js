@@ -18,12 +18,45 @@ let adminClickCount = 0;
 let enabledPages = new Set();
 let pageTimers = {}; // pageNum -> startTime
 let timerInterval = null;
+let serverClockOffsetMs = 0;
+let hasServerClock = false;
 
 const TIMER_OFFSET = 10000;
 const TIMER_DURATION = 3000;
 
 function getEl(id) {
   return document.getElementById(id);
+}
+
+function getAuthoritativeNow() {
+  if (syncEnabled && hasServerClock) return Date.now() + serverClockOffsetMs;
+  return Date.now();
+}
+
+async function syncServerClock() {
+  if (!syncEnabled || !supabase) return false;
+
+  const requestStartedAt = Date.now();
+  const { data, error } = await supabase.rpc('server_time_ms');
+  const responseReceivedAt = Date.now();
+
+  if (error) {
+    console.error('Server clock sync failed:', error);
+    return false;
+  }
+
+  const serverTime = Number(data);
+  if (!Number.isFinite(serverTime)) {
+    console.error('Server clock sync returned an invalid value:', data);
+    return false;
+  }
+
+  // Estimate the browser time at the midpoint of the request. This removes
+  // local clock skew while keeping network-latency error to roughly half RTT.
+  const browserMidpoint = (requestStartedAt + responseReceivedAt) / 2;
+  serverClockOffsetMs = serverTime - browserMidpoint;
+  hasServerClock = true;
+  return true;
 }
 
 // --- Storage Logic ---
@@ -98,7 +131,7 @@ function loadLocalData() {
       }
     }
 
-    const now = Date.now();
+    const now = getAuthoritativeNow();
     for (const pageNum in pageTimers) {
       if (now - pageTimers[pageNum] >= TIMER_DURATION) {
         enabledPages.add(parseInt(pageNum));
@@ -166,6 +199,11 @@ async function connectSupabase() {
   
   try {
     supabase = createClient(url, key);
+
+    const clockSynced = await syncServerClock();
+    if (!clockSynced) {
+      throw new Error('Server timer functions are not installed. Run supabase-timer.sql in Supabase SQL Editor.');
+    }
     
     // Initial fetch
     const { data, error } = await supabase
@@ -188,7 +226,7 @@ async function connectSupabase() {
     });
 
     // Check expired timers
-    const now = Date.now();
+    const now = getAuthoritativeNow();
     for (const pageNum in pageTimers) {
       if (now - pageTimers[pageNum] >= TIMER_DURATION) {
         enabledPages.add(parseInt(pageNum));
@@ -222,7 +260,7 @@ function handleRemoteChange(payload) {
       const pageNum = payload.new.item_id - TIMER_OFFSET;
       const startTime = parseInt(payload.new.ign);
       pageTimers[pageNum] = startTime;
-      if (Date.now() - startTime < TIMER_DURATION) {
+      if (getAuthoritativeNow() - startTime < TIMER_DURATION) {
         startGlobalTimer();
       } else {
         enabledPages.add(pageNum);
@@ -231,7 +269,11 @@ function handleRemoteChange(payload) {
       reservations[payload.new.item_id] = payload.new.ign;
     }
   } else if (payload.eventType === 'DELETE') {
-    if (payload.old.item_id !== 0) {
+    if (payload.old.item_id >= TIMER_OFFSET) {
+      const pageNum = payload.old.item_id - TIMER_OFFSET;
+      delete pageTimers[pageNum];
+      enabledPages.delete(pageNum);
+    } else if (payload.old.item_id !== 0) {
       delete reservations[payload.old.item_id];
     }
   }
@@ -347,6 +389,12 @@ async function clearAllReservations() {
     }
   }
   reservations = {};
+  pageTimers = {};
+  enabledPages.clear();
+  if (timerInterval) {
+    clearInterval(timerInterval);
+    timerInterval = null;
+  }
   localStorage.removeItem('guild_claims');
   return true;
 }
@@ -596,25 +644,31 @@ async function executeClaim(itemId, itemCard) {
 
   let success = false;
   if (syncEnabled && supabase) {
-    // For cloud sync, use INSERT to prevent overwriting someone else's claim (first-come, first-served)
-    const { error } = await supabase
-      .from('reservations')
-      .insert({ item_id: itemId, ign: ign });
-      
+    // The database is authoritative for both the 3-second gate and first claim.
+    // A manipulated/fast client clock can no longer claim before the shared deadline.
+    const { data, error } = await supabase.rpc('claim_item_after_timer', {
+      p_item_id: itemId,
+      p_ign: ign
+    });
+
     if (error) {
-      if (error.code === '23505') { // Unique violation
-        alert("Too slow! Someone else just claimed this item.");
-      } else {
-        alert("Sync failed: " + error.message);
-      }
-      success = false;
-    } else {
+      alert("Sync failed: " + error.message);
+    } else if (data === 'claimed') {
       success = true;
       reservations[itemId] = ign;
       safeSet('guild_claims', JSON.stringify(reservations));
+    } else if (data === 'already_claimed') {
+      alert("Too slow! Someone else just claimed this item.");
+    } else if (data === 'too_early') {
+      await syncServerClock();
+      alert("The shared 3-second countdown has not finished yet.");
+    } else if (data === 'timer_not_started') {
+      alert("This page has not been enabled yet.");
+    } else {
+      alert("Claim failed: " + data);
     }
   } else {
-    // Local mode
+    // Local-only mode has no shared users, so the browser clock is sufficient.
     success = await persistReservation(itemId, ign);
   }
 
@@ -803,16 +857,35 @@ async function startEnableTimer() {
   if (!btn || btn.disabled) return;
   
   const pageToEnable = currentPage;
-  const startTime = Date.now();
-  
+  btn.disabled = true;
+  btn.textContent = '⏳ Starting shared timer...';
+
+  let startTime;
   if (syncEnabled && supabase) {
-    const { error } = await supabase
-      .from('reservations')
-      .insert({ item_id: TIMER_OFFSET + pageToEnable, ign: startTime.toString() });
-    
-    if (error && error.code !== '23505') { // Ignore unique violation
+    // PostgreSQL creates the timestamp. Every user receives exactly the same
+    // start value, independent of the clock on the admin's device.
+    const { data, error } = await supabase.rpc('start_page_timer', {
+      p_page: pageToEnable
+    });
+
+    if (error) {
       console.error("Sync timer failed:", error);
+      alert("Could not start the shared timer: " + error.message);
+      updateTimerButton();
+      return;
     }
+
+    startTime = Number(data);
+    if (!Number.isFinite(startTime)) {
+      alert("Could not start the shared timer: invalid server timestamp.");
+      updateTimerButton();
+      return;
+    }
+
+    // Refresh the offset around timer start to minimize clock drift/skew.
+    await syncServerClock();
+  } else {
+    startTime = Date.now();
   }
 
   pageTimers[pageToEnable] = startTime;
@@ -824,7 +897,7 @@ function startGlobalTimer() {
   if (timerInterval) return;
   
   timerInterval = setInterval(() => {
-    const now = Date.now();
+    const now = getAuthoritativeNow();
     let stillRunning = false;
     
     for (const pageNum in pageTimers) {
@@ -861,7 +934,7 @@ function updateTimerButton() {
   }
 
   if (startTime) {
-    const elapsed = Date.now() - startTime;
+    const elapsed = getAuthoritativeNow() - startTime;
     const timeLeft = Math.ceil((TIMER_DURATION - elapsed) / 1000);
     if (timeLeft > 0) {
       btn.classList.remove('hidden');
