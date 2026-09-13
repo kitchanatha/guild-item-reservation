@@ -1,6 +1,16 @@
 -- Shared 3-second page timer and authoritative claim gate.
 -- Run this file once in Supabase Dashboard -> SQL Editor.
 
+-- Records who started each page's timer, so it can be looked up later in the
+-- Table Editor (or via a `select * from page_timer_log order by started_at desc`)
+-- instead of guessing from the shared, login-less admin trigger.
+create table if not exists public.page_timer_log (
+  id bigint generated always as identity primary key,
+  page integer not null,
+  started_by text,
+  started_at timestamptz not null default now()
+);
+
 create or replace function public.server_time_ms()
 returns bigint
 language sql
@@ -11,7 +21,11 @@ as $$
   select floor(extract(epoch from clock_timestamp()) * 1000)::bigint;
 $$;
 
-create or replace function public.start_page_timer(p_page integer)
+-- Overload cleanup: drop the old one-argument signature so PostgREST doesn't
+-- see two start_page_timer candidates and refuse to pick one.
+drop function if exists public.start_page_timer(integer);
+
+create or replace function public.start_page_timer(p_page integer, p_started_by text default null)
 returns bigint
 language plpgsql
 security definer
@@ -21,6 +35,7 @@ declare
   v_item_id integer;
   v_start_ms bigint;
   v_existing text;
+  v_won integer;
 begin
   if p_page is null or p_page < 1 then
     raise exception 'Invalid page number';
@@ -49,7 +64,14 @@ begin
   on conflict (item_id) do nothing;
 
   -- Handles two admins clicking at nearly the same instant: both callers
-  -- receive the timestamp belonging to the single winning timer row.
+  -- receive the timestamp belonging to the single winning timer row, but only
+  -- the caller whose insert actually won the race gets logged as the starter.
+  get diagnostics v_won = row_count;
+  if v_won > 0 then
+    insert into public.page_timer_log (page, started_by)
+    values (p_page, nullif(btrim(p_started_by), ''));
+  end if;
+
   select ign::bigint into v_start_ms
   from public.reservations
   where item_id = v_item_id;
@@ -127,5 +149,5 @@ end;
 $$;
 
 grant execute on function public.server_time_ms() to anon, authenticated;
-grant execute on function public.start_page_timer(integer) to anon, authenticated;
+grant execute on function public.start_page_timer(integer, text) to anon, authenticated;
 grant execute on function public.claim_item_after_timer(integer, text) to anon, authenticated;

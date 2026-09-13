@@ -855,8 +855,23 @@ function setAllButtonsState(disabled) {
 async function startEnableTimer() {
   const btn = getEl('enable-timer-btn');
   if (!btn || btn.disabled) return;
-  
+
   const pageToEnable = currentPage;
+  const ignInput = getEl('global-ign');
+  const startedBy = ignInput ? ignInput.value.trim() : '';
+
+  // Attribute who started the timer so it can be looked up later (see
+  // page_timer_log in supabase-timer.sql) — this button has no login of its
+  // own, so the IGN field is the only identity we have to attach.
+  if (syncEnabled && supabase && !startedBy) {
+    if (ignInput) {
+      ignInput.focus();
+      ignInput.style.borderColor = '#ff5252';
+      setTimeout(() => ignInput.style.borderColor = '#333', 500);
+    }
+    return alert("Please enter your IGN at the top first, so we know who started the timer!");
+  }
+
   btn.disabled = true;
   btn.textContent = '⏳ Starting shared timer...';
 
@@ -865,7 +880,8 @@ async function startEnableTimer() {
     // PostgreSQL creates the timestamp. Every user receives exactly the same
     // start value, independent of the clock on the admin's device.
     const { data, error } = await supabase.rpc('start_page_timer', {
-      p_page: pageToEnable
+      p_page: pageToEnable,
+      p_started_by: startedBy
     });
 
     if (error) {
