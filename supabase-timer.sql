@@ -11,6 +11,73 @@ create table if not exists public.page_timer_log (
   started_at timestamptz not null default now()
 );
 
+-- Allowlist of IGNs permitted to start a page timer. Managed from the hidden
+-- admin menu (the same 10-click logo trigger that reveals Reset/Export/etc),
+-- and enforced server-side in start_page_timer below so the check can't be
+-- bypassed by editing the page. Note this is still only as strong as the IGN
+-- someone types in — there's no login on this site — so treat it as a soft
+-- gate against casual misuse, not real authentication.
+create table if not exists public.timer_admins (
+  id bigint generated always as identity primary key,
+  ign text not null unique,
+  added_at timestamptz not null default now(),
+  added_by text
+);
+
+alter table public.timer_admins enable row level security;
+-- No policies -> anon/authenticated get zero direct table access; all reads
+-- and writes go through the security definer functions below.
+
+create or replace function public.list_timer_admins()
+returns table(ign text, added_at timestamptz)
+language sql
+security definer
+set search_path = public
+as $$
+  select ign, added_at from public.timer_admins order by added_at asc;
+$$;
+
+create or replace function public.add_timer_admin(p_ign text, p_added_by text default null)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if p_ign is null or btrim(p_ign) = '' then
+    raise exception 'IGN is required';
+  end if;
+  insert into public.timer_admins (ign, added_by)
+  values (btrim(p_ign), nullif(btrim(p_added_by), ''))
+  on conflict (ign) do nothing;
+end;
+$$;
+
+create or replace function public.remove_timer_admin(p_ign text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  delete from public.timer_admins where ign = btrim(p_ign);
+end;
+$$;
+
+create or replace function public.rename_timer_admin(p_old_ign text, p_new_ign text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if p_new_ign is null or btrim(p_new_ign) = '' then
+    raise exception 'New IGN is required';
+  end if;
+  update public.timer_admins set ign = btrim(p_new_ign) where ign = btrim(p_old_ign);
+end;
+$$;
+
 create or replace function public.server_time_ms()
 returns bigint
 language sql
@@ -39,6 +106,12 @@ declare
 begin
   if p_page is null or p_page < 1 then
     raise exception 'Invalid page number';
+  end if;
+
+  if p_started_by is null or btrim(p_started_by) = '' or not exists (
+    select 1 from public.timer_admins where ign = btrim(p_started_by)
+  ) then
+    raise exception 'Only designated timer admins can start the timer.';
   end if;
 
   v_item_id := 10000 + p_page;
@@ -151,3 +224,7 @@ $$;
 grant execute on function public.server_time_ms() to anon, authenticated;
 grant execute on function public.start_page_timer(integer, text) to anon, authenticated;
 grant execute on function public.claim_item_after_timer(integer, text) to anon, authenticated;
+grant execute on function public.list_timer_admins() to anon, authenticated;
+grant execute on function public.add_timer_admin(text, text) to anon, authenticated;
+grant execute on function public.remove_timer_admin(text) to anon, authenticated;
+grant execute on function public.rename_timer_admin(text, text) to anon, authenticated;

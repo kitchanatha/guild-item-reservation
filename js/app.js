@@ -407,14 +407,117 @@ function setupAdminTrigger() {
     trigger.addEventListener('click', () => {
       adminClickCount++;
       if (adminClickCount >= 10) {
-        getEl('admin-actions')?.classList.toggle('hidden');
+        const actions = getEl('admin-actions');
+        actions?.classList.toggle('hidden');
         getEl('config-section')?.classList.toggle('hidden');
         adminClickCount = 0;
-        renderItems(); 
+        renderItems();
+        if (actions && !actions.classList.contains('hidden')) {
+          loadTimerAdmins();
+        }
       }
     });
   }
 }
+
+// --- Timer admin allowlist (who is permitted to start a page timer) ---
+
+async function loadTimerAdmins() {
+  const list = getEl('timer-admins-list');
+  if (!list) return;
+
+  if (!syncEnabled || !supabase) {
+    list.innerHTML = '<li>Timer admins require Cloud Sync (Supabase) to be enabled.</li>';
+    return;
+  }
+
+  const { data, error } = await supabase.rpc('list_timer_admins');
+  if (error) {
+    console.error('Failed to load timer admins:', error);
+    list.innerHTML = '<li>Failed to load list.</li>';
+    return;
+  }
+  renderTimerAdminsList(data || []);
+}
+
+function renderTimerAdminsList(admins) {
+  const list = getEl('timer-admins-list');
+  if (!list) return;
+
+  list.innerHTML = '';
+  if (admins.length === 0) {
+    list.innerHTML = '<li>No one added yet — no one can start a timer until you add at least one IGN.</li>';
+    return;
+  }
+
+  admins.forEach((admin) => {
+    const li = document.createElement('li');
+
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'timer-admin-name';
+    nameSpan.textContent = admin.ign;
+    li.appendChild(nameSpan);
+
+    const actions = document.createElement('span');
+    actions.className = 'timer-admin-actions';
+
+    const editBtn = document.createElement('button');
+    editBtn.textContent = '✏️';
+    editBtn.title = 'Edit';
+    editBtn.onclick = () => editTimerAdmin(admin.ign);
+    actions.appendChild(editBtn);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.textContent = '🗑️';
+    removeBtn.title = 'Remove';
+    removeBtn.onclick = () => removeTimerAdmin(admin.ign);
+    actions.appendChild(removeBtn);
+
+    li.appendChild(actions);
+    list.appendChild(li);
+  });
+}
+
+async function addTimerAdmin() {
+  if (!syncEnabled || !supabase) return alert('Enable Cloud Sync (Supabase) first.');
+
+  const input = getEl('new-timer-admin-ign');
+  const ign = input ? input.value.trim() : '';
+  if (!ign) return alert('Enter an IGN first.');
+
+  const addedBy = getEl('global-ign') ? getEl('global-ign').value.trim() : '';
+  const { error } = await supabase.rpc('add_timer_admin', { p_ign: ign, p_added_by: addedBy || null });
+  if (error) return alert('Failed to add: ' + error.message);
+
+  input.value = '';
+  await loadTimerAdmins();
+}
+window.addTimerAdmin = addTimerAdmin;
+
+async function removeTimerAdmin(ign) {
+  if (!supabase) return;
+  if (!confirm(`Remove "${ign}" from the timer-admin list?`)) return;
+
+  const { error } = await supabase.rpc('remove_timer_admin', { p_ign: ign });
+  if (error) return alert('Failed to remove: ' + error.message);
+
+  await loadTimerAdmins();
+}
+window.removeTimerAdmin = removeTimerAdmin;
+
+async function editTimerAdmin(oldIgn) {
+  if (!supabase) return;
+  const newIgn = prompt('New IGN:', oldIgn);
+  if (newIgn === null) return;
+  const trimmed = newIgn.trim();
+  if (!trimmed || trimmed === oldIgn) return;
+
+  const { error } = await supabase.rpc('rename_timer_admin', { p_old_ign: oldIgn, p_new_ign: trimmed });
+  if (error) return alert('Failed to rename: ' + error.message);
+
+  await loadTimerAdmins();
+}
+window.editTimerAdmin = editTimerAdmin;
 
 function renderItems() {
   const container = getEl('items-container');

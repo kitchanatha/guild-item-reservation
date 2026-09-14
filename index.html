@@ -38,6 +38,16 @@
         <button onclick="saveSupabaseConfig()">💾 Save & Connect</button>
         <p class="hint">Leave empty to use Local Storage</p>
       </div>
+
+      <div class="supabase-config">
+        <h3>Who Can Start Timer</h3>
+        <ul id="timer-admins-list" class="timer-admins-list"></ul>
+        <div class="timer-admin-add-row">
+          <input type="text" id="new-timer-admin-ign" placeholder="IGN to add">
+          <button onclick="addTimerAdmin()">➕ Add</button>
+        </div>
+        <p class="hint">Only these IGNs can click "Enable Items" to start a page's timer.</p>
+      </div>
     </div>
 
     <div class="user-settings">
