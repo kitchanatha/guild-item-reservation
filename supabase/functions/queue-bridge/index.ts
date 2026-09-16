@@ -378,14 +378,32 @@ async function isAuthorizedAdmin(supabase: ReturnType<typeof createClient>, ign:
 
 // --- HTTP handler -----------------------------------------------------
 
+// The site (kitchanatha.github.io) calling this function (*.supabase.co) is a cross-origin
+// request — browsers require these headers on every response (including the preflight OPTIONS
+// request) before they'll let the page read the result. curl/server-to-server calls don't
+// enforce this, which is why a direct test can look fine while the real browser call fails.
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
+function jsonResponse(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json", ...CORS_HEADERS },
+  });
+}
+
 Deno.serve(async (req) => {
-  if (req.method !== "POST") return new Response("Method not allowed", { status: 405 });
+  if (req.method === "OPTIONS") return new Response(null, { headers: CORS_HEADERS });
+  if (req.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
 
   let body: any;
   try {
     body = await req.json();
   } catch {
-    return new Response(JSON.stringify({ error: "invalid_json" }), { status: 400 });
+    return jsonResponse({ error: "invalid_json" }, 400);
   }
 
   const supabase = createClient(Deno.env.get("SUPABASE_URL") ?? "", Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "");
@@ -395,27 +413,27 @@ Deno.serve(async (req) => {
       const queueType: QueueType = body.queueType === "Accessory" ? "Accessory" : "Card";
       const token = await getAccessToken();
       const queue = await buildQueueList(token, queueType);
-      return new Response(JSON.stringify({ queue }), { headers: { "Content-Type": "application/json" } });
+      return jsonResponse({ queue });
     }
 
     if (body.action === "dequeue") {
       const { discordId, queueType, adminIgn } = body;
       if (!discordId || (queueType !== "Card" && queueType !== "Accessory")) {
-        return new Response(JSON.stringify({ error: "invalid_request" }), { status: 400 });
+        return jsonResponse({ error: "invalid_request" }, 400);
       }
       const authorized = await isAuthorizedAdmin(supabase, adminIgn);
       if (!authorized) {
-        return new Response(JSON.stringify({ error: "not_authorized" }), { status: 403 });
+        return jsonResponse({ error: "not_authorized" }, 403);
       }
       const token = await getAccessToken();
       const result = await dequeueMember(token, discordId, queueType, adminIgn);
-      return new Response(JSON.stringify(result), { headers: { "Content-Type": "application/json" } });
+      return jsonResponse(result);
     }
 
-    return new Response(JSON.stringify({ error: "unknown_action" }), { status: 400 });
+    return jsonResponse({ error: "unknown_action" }, 400);
   } catch (err) {
     console.error(err);
     const message = err instanceof Error ? err.message : "unknown_error";
-    return new Response(JSON.stringify({ error: message }), { status: 500 });
+    return jsonResponse({ error: message }, 500);
   }
 });
