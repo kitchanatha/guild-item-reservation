@@ -414,6 +414,7 @@ function setupAdminTrigger() {
         renderItems();
         if (actions && !actions.classList.contains('hidden')) {
           loadTimerAdmins();
+          loadDiscordQueue();
         }
       }
     });
@@ -518,6 +519,111 @@ async function editTimerAdmin(oldIgn) {
   await loadTimerAdmins();
 }
 window.editTimerAdmin = editTimerAdmin;
+
+// --- Discord item queue (bridges to the guild bot's Google Sheet via a Supabase Edge
+// Function — the bot's queue data has no other connection to this site) ---
+
+let currentQueueTab = 'Card';
+
+function edgeFunctionUrl(name) {
+  const { url } = getSupabaseConfig();
+  return `${url.replace(/\/$/, '')}/functions/v1/${name}`;
+}
+
+async function callQueueBridge(payload) {
+  const { key } = getSupabaseConfig();
+  const res = await fetch(edgeFunctionUrl('queue-bridge'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${key}`,
+      'apikey': key,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+  return data;
+}
+
+function switchQueueTab(type) {
+  currentQueueTab = type;
+  const cardBtn = getEl('queue-tab-card');
+  const accessoryBtn = getEl('queue-tab-accessory');
+  if (cardBtn) cardBtn.classList.toggle('active', type === 'Card');
+  if (accessoryBtn) accessoryBtn.classList.toggle('active', type === 'Accessory');
+  loadDiscordQueue();
+}
+window.switchQueueTab = switchQueueTab;
+
+async function loadDiscordQueue() {
+  const list = getEl('discord-queue-list');
+  if (!list) return;
+
+  if (!syncEnabled || !supabase) {
+    list.innerHTML = '<li>Discord queue requires Cloud Sync (Supabase) to be enabled.</li>';
+    return;
+  }
+
+  list.innerHTML = '<li>Loading...</li>';
+  try {
+    const data = await callQueueBridge({ action: 'list', queueType: currentQueueTab });
+    renderDiscordQueue(data.queue || []);
+  } catch (err) {
+    console.error('Failed to load Discord queue:', err);
+    list.innerHTML = `<li>Failed to load: ${err.message}</li>`;
+  }
+}
+window.loadDiscordQueue = loadDiscordQueue;
+
+function renderDiscordQueue(queue) {
+  const list = getEl('discord-queue-list');
+  if (!list) return;
+
+  list.innerHTML = '';
+  if (queue.length === 0) {
+    list.innerHTML = '<li>Queue is empty.</li>';
+    return;
+  }
+
+  queue.forEach((entry) => {
+    const li = document.createElement('li');
+
+    const pos = document.createElement('span');
+    pos.className = 'queue-position';
+    pos.textContent = `#${entry.position}`;
+    li.appendChild(pos);
+
+    const name = document.createElement('span');
+    name.className = 'queue-name';
+    name.textContent = `${entry.symbol || ''} ${entry.characterName}`.trim();
+    li.appendChild(name);
+
+    const btn = document.createElement('button');
+    btn.className = 'queue-received-btn';
+    btn.textContent = '🎁 ได้รับแล้ว';
+    btn.onclick = () => receiveQueueItem(entry.discordId, entry.characterName);
+    li.appendChild(btn);
+
+    list.appendChild(li);
+  });
+}
+
+async function receiveQueueItem(discordId, characterName) {
+  const adminIgn = getEl('global-ign') ? getEl('global-ign').value.trim() : '';
+  if (!adminIgn) return alert('Enter your IGN at the top first — it\'s checked against the timer-admin list.');
+
+  if (!confirm(`Mark "${characterName}" as received their ${currentQueueTab === 'Card' ? 'card' : 'accessory'}?`)) return;
+
+  try {
+    const result = await callQueueBridge({ action: 'dequeue', discordId, queueType: currentQueueTab, adminIgn });
+    const cooldownDate = new Date(result.cooldownUntil);
+    alert(`✅ ${result.characterName} ได้รับ${currentQueueTab === 'Card' ? 'การ์ด' : 'ประดับ'}แล้ว\nจะสามารถเข้าคิวได้อีกที: ${cooldownDate.toLocaleDateString()}`);
+    await loadDiscordQueue();
+  } catch (err) {
+    alert('Failed: ' + err.message);
+  }
+}
 
 function renderItems() {
   const container = getEl('items-container');

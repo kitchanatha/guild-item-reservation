@@ -636,6 +636,80 @@ button:disabled {
   margin-bottom: 0;
 }
 
+.queue-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.queue-tab-btn {
+  flex: 1;
+  padding: 8px;
+  background: #121212;
+  border: 1px solid #333;
+  color: #aaa;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.queue-tab-btn.active {
+  background: #1a3a1a;
+  border-color: #4caf50;
+  color: #e0e0e0;
+  font-weight: bold;
+}
+
+.queue-refresh-btn {
+  padding: 8px 10px;
+  background: #121212;
+  border: 1px solid #333;
+  color: #e0e0e0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.discord-queue-list {
+  list-style: none;
+  margin: 0 0 10px 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.discord-queue-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  background: #121212;
+  border: 1px solid #333;
+  border-radius: 4px;
+  margin-bottom: 6px;
+}
+
+.discord-queue-list .queue-position {
+  color: #888;
+  min-width: 24px;
+}
+
+.discord-queue-list .queue-name {
+  flex: 1;
+  text-align: left;
+  word-break: break-word;
+}
+
+.discord-queue-list .queue-received-btn {
+  background: #1a3a1a;
+  border: 1px solid #4caf50;
+  color: #e0e0e0;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+
 /*
  * Hide visually and from screen readers
  */

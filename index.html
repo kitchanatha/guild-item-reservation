@@ -48,6 +48,17 @@
         </div>
         <p class="hint">Only these IGNs can click "Enable Items" to start a page's timer.</p>
       </div>
+
+      <div class="supabase-config">
+        <h3>Discord Item Queue</h3>
+        <div class="queue-tabs">
+          <button id="queue-tab-card" class="queue-tab-btn active" onclick="switchQueueTab('Card')">คิวการ์ด</button>
+          <button id="queue-tab-accessory" class="queue-tab-btn" onclick="switchQueueTab('Accessory')">คิวประดับ</button>
+          <button class="queue-refresh-btn" onclick="loadDiscordQueue()" title="Refresh">🔄</button>
+        </div>
+        <ul id="discord-queue-list" class="discord-queue-list"></ul>
+        <p class="hint">Only IGNs from the list above can click "ได้รับแล้ว" — checked on the server, not just hidden here.</p>
+      </div>
     </div>
 
     <div class="user-settings">
