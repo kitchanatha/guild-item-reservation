@@ -109,6 +109,22 @@
       <!-- Summary will be injected here by JS -->
     </div>
 
+    <div id="public-queue-section" class="summary-section">
+      <h2>🎟️ Discord Item Queue / คิวไอเทม
+        <button class="queue-refresh-btn" onclick="loadPublicQueue()" title="Refresh">🔄</button>
+      </h2>
+      <div class="public-queue-columns">
+        <div class="public-queue-column">
+          <h3>คิวการ์ด</h3>
+          <ol id="public-queue-card" class="public-queue-list"></ol>
+        </div>
+        <div class="public-queue-column">
+          <h3>คิวประดับ</h3>
+          <ol id="public-queue-accessory" class="public-queue-list"></ol>
+        </div>
+      </div>
+    </div>
+
     <!-- Confirmation Modal -->
     <div id="confirm-modal" class="modal hidden">
       <div class="modal-content">

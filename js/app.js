@@ -111,6 +111,7 @@ async function init() {
   
   renderItems();
   renderSummary();
+  loadPublicQueue();
 }
 
 
@@ -546,6 +547,46 @@ async function callQueueBridge(payload) {
   return data;
 }
 
+// Public, read-only queue display shown below the Reservation Summary — visible to every
+// visitor, not just after the hidden admin menu is revealed (that copy keeps its own "ได้รับแล้ว"
+// button; this one is view-only).
+async function loadPublicQueue() {
+  const cardList = getEl('public-queue-card');
+  const accessoryList = getEl('public-queue-accessory');
+  if (!cardList || !accessoryList) return;
+
+  cardList.innerHTML = '<li class="queue-empty">Loading...</li>';
+  accessoryList.innerHTML = '<li class="queue-empty">Loading...</li>';
+
+  try {
+    const [cardData, accessoryData] = await Promise.all([
+      callQueueBridge({ action: 'list', queueType: 'Card' }),
+      callQueueBridge({ action: 'list', queueType: 'Accessory' }),
+    ]);
+    renderPublicQueueList(cardList, cardData.queue || []);
+    renderPublicQueueList(accessoryList, accessoryData.queue || []);
+  } catch (err) {
+    console.error('Failed to load public queue:', err);
+    const msg = `<li class="queue-empty">Failed to load: ${err.message}</li>`;
+    cardList.innerHTML = msg;
+    accessoryList.innerHTML = msg;
+  }
+}
+window.loadPublicQueue = loadPublicQueue;
+
+function renderPublicQueueList(listEl, queue) {
+  listEl.innerHTML = '';
+  if (queue.length === 0) {
+    listEl.innerHTML = '<li class="queue-empty">Queue is empty.</li>';
+    return;
+  }
+  queue.forEach((entry) => {
+    const li = document.createElement('li');
+    li.textContent = `${entry.symbol || ''} ${entry.characterName}`.trim();
+    listEl.appendChild(li);
+  });
+}
+
 function switchQueueTab(type) {
   currentQueueTab = type;
   const cardBtn = getEl('queue-tab-card');
@@ -620,6 +661,7 @@ async function receiveQueueItem(discordId, characterName) {
     const cooldownDate = new Date(result.cooldownUntil);
     alert(`✅ ${result.characterName} ได้รับ${currentQueueTab === 'Card' ? 'การ์ด' : 'ประดับ'}แล้ว\nจะสามารถเข้าคิวได้อีกที: ${cooldownDate.toLocaleDateString()}`);
     await loadDiscordQueue();
+    await loadPublicQueue();
   } catch (err) {
     alert('Failed: ' + err.message);
   }
