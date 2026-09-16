@@ -563,8 +563,8 @@ async function loadPublicQueue() {
       callQueueBridge({ action: 'list', queueType: 'Card' }),
       callQueueBridge({ action: 'list', queueType: 'Accessory' }),
     ]);
-    renderPublicQueueList(cardList, cardData.queue || []);
-    renderPublicQueueList(accessoryList, accessoryData.queue || []);
+    renderPublicQueueList(cardList, cardData.queue || [], 'Card');
+    renderPublicQueueList(accessoryList, accessoryData.queue || [], 'Accessory');
   } catch (err) {
     console.error('Failed to load public queue:', err);
     const msg = `<li class="queue-empty">Failed to load: ${err.message}</li>`;
@@ -574,7 +574,10 @@ async function loadPublicQueue() {
 }
 window.loadPublicQueue = loadPublicQueue;
 
-function renderPublicQueueList(listEl, queue) {
+// Same gate as "Enable Items" (start_page_timer): the button is visible to everyone, but the
+// click only succeeds if the IGN typed at the top is on the timer_admins list — enforced
+// server-side in queue-bridge, not by hiding the button behind the admin menu.
+function renderPublicQueueList(listEl, queue, queueType) {
   listEl.innerHTML = '';
   if (queue.length === 0) {
     listEl.innerHTML = '<li class="queue-empty">Queue is empty.</li>';
@@ -582,10 +585,41 @@ function renderPublicQueueList(listEl, queue) {
   }
   queue.forEach((entry) => {
     const li = document.createElement('li');
-    li.textContent = `${entry.symbol || ''} ${entry.characterName}`.trim();
+    li.className = 'public-queue-row';
+
+    const name = document.createElement('span');
+    name.className = 'public-queue-name';
+    name.textContent = `${entry.symbol || ''} ${entry.characterName}`.trim();
+    li.appendChild(name);
+
+    const btn = document.createElement('button');
+    btn.className = 'queue-received-btn';
+    btn.textContent = '🎁 ได้รับแล้ว';
+    btn.onclick = () => receivePublicQueueItem(entry.discordId, entry.characterName, queueType);
+    li.appendChild(btn);
+
     listEl.appendChild(li);
   });
 }
+
+async function receivePublicQueueItem(discordId, characterName, queueType) {
+  const adminIgn = getEl('global-ign') ? getEl('global-ign').value.trim() : '';
+  if (!adminIgn) return alert('Enter your IGN at the top first — it\'s checked against the timer-admin list.');
+
+  const queueLabel = queueType === 'Card' ? 'การ์ด' : 'ประดับ';
+  if (!confirm(`Mark "${characterName}" as received their ${queueLabel}?`)) return;
+
+  try {
+    const result = await callQueueBridge({ action: 'dequeue', discordId, queueType, adminIgn });
+    const cooldownDate = new Date(result.cooldownUntil);
+    alert(`✅ ${result.characterName} ได้รับ${queueLabel}แล้ว\nจะสามารถเข้าคิวได้อีกที: ${cooldownDate.toLocaleDateString()}`);
+    await loadPublicQueue();
+    if (typeof loadDiscordQueue === 'function') await loadDiscordQueue();
+  } catch (err) {
+    alert('Failed: ' + err.message);
+  }
+}
+window.receivePublicQueueItem = receivePublicQueueItem;
 
 function switchQueueTab(type) {
   currentQueueTab = type;

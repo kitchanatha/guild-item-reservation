@@ -745,20 +745,37 @@ button:disabled {
 
 .public-queue-list {
   margin: 0;
-  padding-left: 22px;
+  padding: 0;
+  list-style: none;
+  counter-reset: queue-position;
   max-height: 400px;
   overflow-y: auto;
 }
 
-.public-queue-list li {
-  padding: 4px 0;
+.public-queue-list li.public-queue-row {
+  counter-increment: queue-position;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid #333;
+  border-radius: 4px;
+  margin-bottom: 6px;
+}
+
+.public-queue-list li.public-queue-row::before {
+  content: "#" counter(queue-position);
+  color: #888;
+  min-width: 24px;
+}
+
+.public-queue-name {
+  flex: 1;
+  text-align: left;
   word-break: break-word;
 }
 
 .public-queue-list .queue-empty {
-  list-style: none;
-  padding-left: -22px;
-  margin-left: -22px;
   color: #888;
 }
 
