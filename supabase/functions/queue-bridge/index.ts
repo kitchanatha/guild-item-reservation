@@ -364,6 +364,104 @@ async function dequeueMember(token: string, discordId: string, queueType: QueueT
   return { characterName: memberRow?.[3] ?? "", cooldownUntil };
 }
 
+// --- weekly guild stats capture (Rating / Contribution, read off the in-game roster screen) ---
+// Ports src/scripts/capture-guild-stats.ts in the bot repo to run from the browser instead of a
+// terminal. Same three writes: append to GuildStats_History (permanent log), rebuild
+// GuildStats_Latest (this week vs the previous capture), update Members!L:N.
+
+const GUILD_STATS_SHEETS = { history: "GuildStats_History", latest: "GuildStats_Latest" } as const;
+
+interface StatsEntry {
+  characterName: string;
+  rating: number;
+  weeklyContribution: number;
+  historicalContribution: number;
+}
+
+// Minimal port of coreName/namesMatch from src/utils/normalize.ts in the bot repo (Deno edge
+// functions can't import across repos) — decoration/case-insensitive character-name matching.
+function coreName(value: string): string {
+  return (value ?? "")
+    .normalize("NFKC")
+    .trim()
+    .toLocaleLowerCase("en-US")
+    .replace(/\p{Mn}/gu, "")
+    .replace(/[^a-z0-9ก-๙]/g, "");
+}
+function namesMatch(a: string, b: string): boolean {
+  const aCores = new Set(a.split("/").map((s) => coreName(s.trim())).filter(Boolean));
+  return b
+    .split("/")
+    .map((s) => coreName(s.trim()))
+    .filter(Boolean)
+    .some((c) => aCores.has(c));
+}
+
+async function captureGuildStats(token: string, entries: StatsEntry[]) {
+  const capturedAt = new Date().toISOString().slice(0, 10);
+
+  const historyRows = await valuesGet(token, `${GUILD_STATS_SHEETS.history}!A2:E`);
+  const previousByName = new Map<string, { rating: number; historicalContribution: number; capturedAt: string }>();
+  for (const [date, name, rating, , historical] of historyRows) {
+    if (!date || !name || date === capturedAt) continue;
+    const existing = previousByName.get(name);
+    if (!existing || date > existing.capturedAt) {
+      previousByName.set(name, { rating: Number(rating), historicalContribution: Number(historical), capturedAt: date });
+    }
+  }
+
+  await valuesAppend(
+    token,
+    `${GUILD_STATS_SHEETS.history}!A:E`,
+    entries.map((e) => [capturedAt, e.characterName, String(e.rating), String(e.weeklyContribution), String(e.historicalContribution)])
+  );
+
+  const { ids, rowCounts } = await ensureSheetMeta(token);
+  const latestSheetId = ids.get(GUILD_STATS_SHEETS.latest);
+  const currentLatestRows = rowCounts.get(GUILD_STATS_SHEETS.latest) ?? 200;
+  if (latestSheetId !== undefined && currentLatestRows > 1) {
+    await structuralBatchUpdate(token, [
+      { updateCells: { range: { sheetId: latestSheetId, startRowIndex: 1, endRowIndex: currentLatestRows, startColumnIndex: 0, endColumnIndex: 7 }, fields: "userEnteredValue" } },
+    ]);
+  }
+
+  const latestRows = entries.map((e) => {
+    const prev = previousByName.get(e.characterName);
+    const ratingChange = prev ? e.rating - prev.rating : "";
+    const historicalChange = prev ? e.historicalContribution - prev.historicalContribution : "";
+    return [e.characterName, String(e.rating), String(ratingChange), String(e.weeklyContribution), String(e.historicalContribution), String(historicalChange), capturedAt];
+  });
+  await valuesUpdate(token, `${GUILD_STATS_SHEETS.latest}!A2:G${latestRows.length + 1}`, latestRows);
+
+  const memberRows = await valuesGet(token, `${SHEETS.members}!A2:D`);
+  const memberUpdates: { range: string; values: string[][] }[] = [];
+  const notFound: string[] = [];
+  for (const e of entries) {
+    const idx = memberRows.findIndex((r) => namesMatch(r[3] ?? "", e.characterName));
+    if (idx < 0) {
+      notFound.push(e.characterName);
+      continue;
+    }
+    memberUpdates.push({ range: `${SHEETS.members}!L${idx + 2}:N${idx + 2}`, values: [[String(e.rating), String(e.weeklyContribution), String(e.historicalContribution)]] });
+  }
+  await valuesBatchUpdate(token, memberUpdates);
+
+  const changes = entries
+    .filter((e) => previousByName.has(e.characterName))
+    .map((e) => ({ characterName: e.characterName, ratingChange: e.rating - previousByName.get(e.characterName)!.rating }))
+    .sort((a, b) => b.ratingChange - a.ratingChange);
+
+  return {
+    capturedAt,
+    historyRowsAdded: entries.length,
+    membersUpdated: memberUpdates.length,
+    membersNotFound: notFound,
+    firstTimeCount: entries.length - changes.length,
+    topGainers: changes.slice(0, 5),
+    topDrops: changes.slice(-5).reverse(),
+  };
+}
+
 // --- authorization: reuse the timer_admins allowlist ----------------------
 
 async function isAuthorizedAdmin(supabase: ReturnType<typeof createClient>, ign: string | undefined): Promise<boolean> {
@@ -427,6 +525,31 @@ Deno.serve(async (req) => {
       }
       const token = await getAccessToken();
       const result = await dequeueMember(token, discordId, queueType, adminIgn);
+      return jsonResponse(result);
+    }
+
+    if (body.action === "capture_guild_stats") {
+      const { entries, adminIgn } = body;
+      const authorized = await isAuthorizedAdmin(supabase, adminIgn);
+      if (!authorized) {
+        return jsonResponse({ error: "not_authorized" }, 403);
+      }
+      if (!Array.isArray(entries) || entries.length === 0) {
+        return jsonResponse({ error: "invalid_request" }, 400);
+      }
+      const clean: StatsEntry[] = [];
+      for (const e of entries) {
+        const characterName = String(e?.characterName ?? "").trim();
+        const rating = Number(e?.rating);
+        const weeklyContribution = Number(e?.weeklyContribution);
+        const historicalContribution = Number(e?.historicalContribution);
+        if (!characterName || !Number.isFinite(rating) || !Number.isFinite(weeklyContribution) || !Number.isFinite(historicalContribution)) {
+          return jsonResponse({ error: "invalid_entry", entry: e }, 400);
+        }
+        clean.push({ characterName, rating, weeklyContribution, historicalContribution });
+      }
+      const token = await getAccessToken();
+      const result = await captureGuildStats(token, clean);
       return jsonResponse(result);
     }
 

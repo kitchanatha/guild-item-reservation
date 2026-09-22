@@ -584,7 +584,8 @@ button:disabled {
   color: #17a2b8;
 }
 
-.supabase-config input {
+.supabase-config input,
+.supabase-config textarea {
   width: 100%;
   margin-bottom: 10px;
   padding: 8px;
@@ -592,6 +593,19 @@ button:disabled {
   border: 1px solid #333;
   color: #e0e0e0;
   border-radius: 4px;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.supabase-config textarea {
+  font-family: monospace;
+  font-size: 0.9em;
+}
+
+.supabase-config code {
+  background: #121212;
+  padding: 1px 4px;
+  border-radius: 3px;
 }
 
 .timer-admins-list {

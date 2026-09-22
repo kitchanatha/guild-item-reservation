@@ -521,6 +521,77 @@ async function editTimerAdmin(oldIgn) {
 }
 window.editTimerAdmin = editTimerAdmin;
 
+// --- Weekly guild stats capture (Rating / Contribution — bridges to the bot's Google Sheet via
+// queue-bridge's capture_guild_stats action, same as the Discord queue below) ---
+
+function parseGuildStatsInput(text) {
+  const entries = [];
+  const errors = [];
+  text.split('\n').forEach((line, i) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    const parts = trimmed.split(',').map((p) => p.trim());
+    if (parts.length !== 4) {
+      errors.push(`Line ${i + 1}: expected 4 comma-separated values, got ${parts.length} ("${trimmed}")`);
+      return;
+    }
+    const [characterName, rating, weekly, historical] = parts;
+    const nums = [rating, weekly, historical].map(Number);
+    if (nums.some((n) => !Number.isFinite(n))) {
+      errors.push(`Line ${i + 1}: rating/weekly/historical must be numbers ("${trimmed}")`);
+      return;
+    }
+    entries.push({ characterName, rating: nums[0], weeklyContribution: nums[1], historicalContribution: nums[2] });
+  });
+  return { entries, errors };
+}
+
+async function submitGuildStats() {
+  const resultEl = getEl('guild-stats-result');
+  const raw = getEl('guild-stats-input').value;
+  const { entries, errors } = parseGuildStatsInput(raw);
+
+  if (errors.length > 0) {
+    resultEl.textContent = '❌ ' + errors.join(' | ');
+    return;
+  }
+  if (entries.length === 0) {
+    resultEl.textContent = '❌ Paste at least one member line first.';
+    return;
+  }
+
+  const adminIgn = getEl('global-ign') ? getEl('global-ign').value.trim() : '';
+  if (!adminIgn) {
+    resultEl.textContent = '❌ Enter your IGN at the top first — it\'s checked against the admin list.';
+    return;
+  }
+
+  resultEl.textContent = `⏳ Submitting ${entries.length} member(s)...`;
+  try {
+    const result = await callQueueBridge({ action: 'capture_guild_stats', entries, adminIgn });
+    const lines = [
+      `✅ Logged ${result.historyRowsAdded} member(s) for ${result.capturedAt}. Updated ${result.membersUpdated} row(s) on Members.`,
+    ];
+    if (result.membersNotFound?.length) {
+      lines.push(`⚠️ Not found on Members (logged to history only): ${result.membersNotFound.join(', ')}`);
+    }
+    if (result.topGainers?.length) {
+      lines.push('📈 Top Rating gainers: ' + result.topGainers.map((g) => `${g.characterName} (${g.ratingChange >= 0 ? '+' : ''}${g.ratingChange})`).join(', '));
+    }
+    if (result.topDrops?.length) {
+      lines.push('📉 Top Rating drops: ' + result.topDrops.map((g) => `${g.characterName} (${g.ratingChange >= 0 ? '+' : ''}${g.ratingChange})`).join(', '));
+    }
+    if (result.firstTimeCount > 0) {
+      lines.push(`ℹ️ ${result.firstTimeCount} member(s) captured for the first time (no comparison yet).`);
+    }
+    resultEl.innerHTML = lines.join('<br>');
+    getEl('guild-stats-input').value = '';
+  } catch (err) {
+    resultEl.textContent = '❌ Failed: ' + err.message;
+  }
+}
+window.submitGuildStats = submitGuildStats;
+
 // --- Discord item queue (bridges to the guild bot's Google Sheet via a Supabase Edge
 // Function — the bot's queue data has no other connection to this site) ---
 
