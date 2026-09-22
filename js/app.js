@@ -993,6 +993,22 @@ async function resetReservations() {
 }
 window.resetReservations = resetReservations;
 
+// Clears only the current page's timer row (item_id = TIMER_OFFSET + pageNum) — unlike
+// resetReservations() above, this never touches any actual item claims, so it's safe to use
+// to re-lock a page (e.g. it was enabled by mistake) without wiping the whole board.
+async function resetCurrentPageTimer() {
+  if (!confirm(`Reset the timer for Page ${currentPage}? This only clears that page's timer, not any item reservations.`)) return;
+  const success = await deleteReservation(TIMER_OFFSET + currentPage);
+  if (success) {
+    delete pageTimers[currentPage];
+    enabledPages.delete(currentPage);
+    renderItems();
+    updateTimerButton();
+    alert(`Timer reset for Page ${currentPage}.`);
+  }
+}
+window.resetCurrentPageTimer = resetCurrentPageTimer;
+
 function exportData() {
   const data = JSON.stringify(reservations, null, 2);
   const blob = new Blob([data], { type: 'application/json' });
