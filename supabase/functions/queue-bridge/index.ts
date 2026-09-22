@@ -364,7 +364,7 @@ async function dequeueMember(token: string, discordId: string, queueType: QueueT
   return { characterName: memberRow?.[3] ?? "", cooldownUntil };
 }
 
-// --- weekly guild stats capture (Rating / Contribution, read off the in-game roster screen) ---
+// --- weekly guild stats capture (Combat Power / Contribution, read off the in-game roster screen) ---
 // Ports src/scripts/capture-guild-stats.ts in the bot repo to run from the browser instead of a
 // terminal. Same three writes: append to GuildStats_History (permanent log), rebuild
 // GuildStats_Latest (this week vs the previous capture), update Members!L:N.
@@ -373,7 +373,7 @@ const GUILD_STATS_SHEETS = { history: "GuildStats_History", latest: "GuildStats_
 
 interface StatsEntry {
   characterName: string;
-  rating: number;
+  combatPower: number;
   weeklyContribution: number;
   historicalContribution: number;
 }
@@ -401,19 +401,19 @@ async function captureGuildStats(token: string, entries: StatsEntry[]) {
   const capturedAt = new Date().toISOString().slice(0, 10);
 
   const historyRows = await valuesGet(token, `${GUILD_STATS_SHEETS.history}!A2:E`);
-  const previousByName = new Map<string, { rating: number; historicalContribution: number; capturedAt: string }>();
-  for (const [date, name, rating, , historical] of historyRows) {
+  const previousByName = new Map<string, { combatPower: number; historicalContribution: number; capturedAt: string }>();
+  for (const [date, name, combatPower, , historical] of historyRows) {
     if (!date || !name || date === capturedAt) continue;
     const existing = previousByName.get(name);
     if (!existing || date > existing.capturedAt) {
-      previousByName.set(name, { rating: Number(rating), historicalContribution: Number(historical), capturedAt: date });
+      previousByName.set(name, { combatPower: Number(combatPower), historicalContribution: Number(historical), capturedAt: date });
     }
   }
 
   await valuesAppend(
     token,
     `${GUILD_STATS_SHEETS.history}!A:E`,
-    entries.map((e) => [capturedAt, e.characterName, String(e.rating), String(e.weeklyContribution), String(e.historicalContribution)])
+    entries.map((e) => [capturedAt, e.characterName, String(e.combatPower), String(e.weeklyContribution), String(e.historicalContribution)])
   );
 
   const { ids, rowCounts } = await ensureSheetMeta(token);
@@ -427,9 +427,9 @@ async function captureGuildStats(token: string, entries: StatsEntry[]) {
 
   const latestRows = entries.map((e) => {
     const prev = previousByName.get(e.characterName);
-    const ratingChange = prev ? e.rating - prev.rating : "";
+    const cpChange = prev ? e.combatPower - prev.combatPower : "";
     const historicalChange = prev ? e.historicalContribution - prev.historicalContribution : "";
-    return [e.characterName, String(e.rating), String(ratingChange), String(e.weeklyContribution), String(e.historicalContribution), String(historicalChange), capturedAt];
+    return [e.characterName, String(e.combatPower), String(cpChange), String(e.weeklyContribution), String(e.historicalContribution), String(historicalChange), capturedAt];
   });
   await valuesUpdate(token, `${GUILD_STATS_SHEETS.latest}!A2:G${latestRows.length + 1}`, latestRows);
 
@@ -442,14 +442,14 @@ async function captureGuildStats(token: string, entries: StatsEntry[]) {
       notFound.push(e.characterName);
       continue;
     }
-    memberUpdates.push({ range: `${SHEETS.members}!L${idx + 2}:N${idx + 2}`, values: [[String(e.rating), String(e.weeklyContribution), String(e.historicalContribution)]] });
+    memberUpdates.push({ range: `${SHEETS.members}!L${idx + 2}:N${idx + 2}`, values: [[String(e.combatPower), String(e.weeklyContribution), String(e.historicalContribution)]] });
   }
   await valuesBatchUpdate(token, memberUpdates);
 
   const changes = entries
     .filter((e) => previousByName.has(e.characterName))
-    .map((e) => ({ characterName: e.characterName, ratingChange: e.rating - previousByName.get(e.characterName)!.rating }))
-    .sort((a, b) => b.ratingChange - a.ratingChange);
+    .map((e) => ({ characterName: e.characterName, cpChange: e.combatPower - previousByName.get(e.characterName)!.combatPower }))
+    .sort((a, b) => b.cpChange - a.cpChange);
 
   return {
     capturedAt,
@@ -540,13 +540,13 @@ Deno.serve(async (req) => {
       const clean: StatsEntry[] = [];
       for (const e of entries) {
         const characterName = String(e?.characterName ?? "").trim();
-        const rating = Number(e?.rating);
+        const combatPower = Number(e?.combatPower);
         const weeklyContribution = Number(e?.weeklyContribution);
         const historicalContribution = Number(e?.historicalContribution);
-        if (!characterName || !Number.isFinite(rating) || !Number.isFinite(weeklyContribution) || !Number.isFinite(historicalContribution)) {
+        if (!characterName || !Number.isFinite(combatPower) || !Number.isFinite(weeklyContribution) || !Number.isFinite(historicalContribution)) {
           return jsonResponse({ error: "invalid_entry", entry: e }, 400);
         }
-        clean.push({ characterName, rating, weeklyContribution, historicalContribution });
+        clean.push({ characterName, combatPower, weeklyContribution, historicalContribution });
       }
       const token = await getAccessToken();
       const result = await captureGuildStats(token, clean);

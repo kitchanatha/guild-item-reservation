@@ -521,8 +521,8 @@ async function editTimerAdmin(oldIgn) {
 }
 window.editTimerAdmin = editTimerAdmin;
 
-// --- Weekly guild stats capture (Rating / Contribution — bridges to the bot's Google Sheet via
-// queue-bridge's capture_guild_stats action, same as the Discord queue below) ---
+// --- Weekly guild stats capture (Combat Power / Contribution — bridges to the bot's Google
+// Sheet via queue-bridge's capture_guild_stats action, same as the Discord queue below) ---
 
 function parseGuildStatsInput(text) {
   const entries = [];
@@ -535,13 +535,13 @@ function parseGuildStatsInput(text) {
       errors.push(`Line ${i + 1}: expected 4 comma-separated values, got ${parts.length} ("${trimmed}")`);
       return;
     }
-    const [characterName, rating, weekly, historical] = parts;
-    const nums = [rating, weekly, historical].map(Number);
+    const [characterName, combatPower, weekly, historical] = parts;
+    const nums = [combatPower, weekly, historical].map(Number);
     if (nums.some((n) => !Number.isFinite(n))) {
-      errors.push(`Line ${i + 1}: rating/weekly/historical must be numbers ("${trimmed}")`);
+      errors.push(`Line ${i + 1}: combat power/weekly/historical must be numbers ("${trimmed}")`);
       return;
     }
-    entries.push({ characterName, rating: nums[0], weeklyContribution: nums[1], historicalContribution: nums[2] });
+    entries.push({ characterName, combatPower: nums[0], weeklyContribution: nums[1], historicalContribution: nums[2] });
   });
   return { entries, errors };
 }
@@ -576,10 +576,10 @@ async function submitGuildStats() {
       lines.push(`⚠️ Not found on Members (logged to history only): ${result.membersNotFound.join(', ')}`);
     }
     if (result.topGainers?.length) {
-      lines.push('📈 Top Rating gainers: ' + result.topGainers.map((g) => `${g.characterName} (${g.ratingChange >= 0 ? '+' : ''}${g.ratingChange})`).join(', '));
+      lines.push('📈 Top Combat Power gainers: ' + result.topGainers.map((g) => `${g.characterName} (${g.cpChange >= 0 ? '+' : ''}${g.cpChange})`).join(', '));
     }
     if (result.topDrops?.length) {
-      lines.push('📉 Top Rating drops: ' + result.topDrops.map((g) => `${g.characterName} (${g.ratingChange >= 0 ? '+' : ''}${g.ratingChange})`).join(', '));
+      lines.push('📉 Top Combat Power drops: ' + result.topDrops.map((g) => `${g.characterName} (${g.cpChange >= 0 ? '+' : ''}${g.cpChange})`).join(', '));
     }
     if (result.firstTimeCount > 0) {
       lines.push(`ℹ️ ${result.firstTimeCount} member(s) captured for the first time (no comparison yet).`);
