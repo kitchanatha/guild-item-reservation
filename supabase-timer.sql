@@ -11,6 +11,19 @@ create table if not exists public.page_timer_log (
   started_at timestamptz not null default now()
 );
 
+-- Permanent record of every successful claim, written inside claim_item_after_timer
+-- below (same instant as the reservations row, so it can't drift out of sync). Unlike
+-- the reservations table itself, this is never updated or deleted — an admin unclaiming
+-- an item via the Reset/Unclaim controls only removes the reservations row, so this log
+-- is the only place that still shows who originally claimed an item and when. Look it up
+-- via the Table Editor or `select * from claim_log order by claimed_at desc`.
+create table if not exists public.claim_log (
+  id bigint generated always as identity primary key,
+  item_id integer not null,
+  ign text not null,
+  claimed_at timestamptz not null default now()
+);
+
 -- Allowlist of IGNs permitted to start a page timer. Managed from the hidden
 -- admin menu (the same 10-click logo trigger that reveals Reset/Export/etc),
 -- and enforced server-side in start_page_timer below so the check can't be
@@ -216,6 +229,9 @@ begin
   if v_rows = 0 then
     return 'already_claimed';
   end if;
+
+  insert into public.claim_log (item_id, ign)
+  values (p_item_id, btrim(p_ign));
 
   return 'claimed';
 end;
