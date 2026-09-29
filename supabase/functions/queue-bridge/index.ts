@@ -12,18 +12,30 @@
 //     -> { characterName, cooldownUntil }
 //     adminIgn must be in the timer_admins table (same allowlist "who can start timer" already
 //     uses) — checked server-side here, not just gated by the site's UI.
+//   { action: "upload_item_image", itemName, imageBase64, contentType, adminIgn? | botSecret? }
+//     -> { itemKey, imageUrl }
+//     Shared by the website's admin panel (adminIgn, checked against timer_admins like above)
+//     and the Discord bot's /upload_item_image command (botSecret, checked against
+//     BOT_SHARED_SECRET below — the bot already gates the command to admin Discord roles before
+//     ever calling this). Stores the image in the item-images Storage bucket and upserts
+//     item_catalog; both writes use this function's service-role client, so browsers and the
+//     bot never get direct write access to either (see supabase-item-catalog.sql).
+//   { action: "delete_item_image", itemKey, adminIgn }
+//     -> { deleted: true }
 //
 // One-time setup:
-//   supabase secrets set GOOGLE_SERVICE_ACCOUNT_EMAIL=... GOOGLE_PRIVATE_KEY=... GOOGLE_SHEET_ID=...
+//   supabase secrets set GOOGLE_SERVICE_ACCOUNT_EMAIL=... GOOGLE_PRIVATE_KEY=... GOOGLE_SHEET_ID=... BOT_SHARED_SECRET=...
 //   supabase functions deploy queue-bridge --no-verify-jwt
 //   (--no-verify-jwt: called with the public anon key like every other RPC here; the real
-//   authorization is the timer_admins check below, not Supabase Auth)
+//   authorization is the timer_admins/BOT_SHARED_SECRET check below, not Supabase Auth)
+//   Also run supabase-item-catalog.sql once, before using the two actions above.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const GOOGLE_SHEET_ID = Deno.env.get("GOOGLE_SHEET_ID") ?? "";
 const GOOGLE_SERVICE_ACCOUNT_EMAIL = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_EMAIL") ?? "";
 const GOOGLE_PRIVATE_KEY = (Deno.env.get("GOOGLE_PRIVATE_KEY") ?? "").replace(/\\n/g, "\n");
+const BOT_SHARED_SECRET = Deno.env.get("BOT_SHARED_SECRET") ?? "";
 
 const SHEETS = {
   members: "Members",
@@ -474,6 +486,88 @@ async function isAuthorizedAdmin(supabase: ReturnType<typeof createClient>, ign:
   return !!data;
 }
 
+// Either the website admin (checked against timer_admins, same as dequeue/capture_guild_stats
+// above) or the Discord bot (checked against a shared secret — the bot itself already restricts
+// /upload_item_image to Discord admin roles before it ever calls this).
+async function isAuthorizedForCatalog(
+  supabase: ReturnType<typeof createClient>,
+  { adminIgn, botSecret }: { adminIgn?: string; botSecret?: string }
+): Promise<boolean> {
+  if (botSecret && BOT_SHARED_SECRET && botSecret === BOT_SHARED_SECRET) return true;
+  return isAuthorizedAdmin(supabase, adminIgn);
+}
+
+// --- item catalog (name + image, uploaded from either the website or Discord) -------------
+
+const CONTENT_TYPE_EXT: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/jpg": "jpg",
+  "image/webp": "webp",
+  "image/gif": "gif",
+};
+
+// Zero-width characters that sometimes ride along when a name is pasted from Discord/LINE —
+// built from char codes rather than \u escapes in the regex literal so the source file never
+// embeds the actual invisible characters.
+const ZERO_WIDTH_CHARS = [0x200b, 0x200c, 0x200d, 0xfeff].map((c) => String.fromCharCode(c));
+const ZERO_WIDTH_RE = new RegExp(`[${ZERO_WIDTH_CHARS.join("")}]`, "g");
+
+function itemKey(name: string): string {
+  return name.normalize("NFC").trim().toLocaleLowerCase("en-US").replace(ZERO_WIDTH_RE, "");
+}
+
+function slugify(key: string): string {
+  return key.replace(/[^a-z0-9ก-๙]+/g, "-").replace(/^-+|-+$/g, "") || "item";
+}
+
+function base64ToBytes(b64: string): Uint8Array {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+async function uploadItemImage(
+  supabase: ReturnType<typeof createClient>,
+  { itemName, imageBase64, contentType, updatedBy }: { itemName: string; imageBase64: string; contentType: string; updatedBy: string }
+) {
+  const key = itemKey(itemName);
+  if (!key) throw new Error("invalid_item_name");
+  const ext = CONTENT_TYPE_EXT[contentType] ?? "png";
+  const path = `${slugify(key)}.${ext}`;
+  const bytes = base64ToBytes(imageBase64);
+
+  const { error: uploadError } = await supabase.storage
+    .from("item-images")
+    .upload(path, bytes, { contentType, upsert: true });
+  if (uploadError) throw new Error(`storage_upload_failed: ${uploadError.message}`);
+
+  const { data: pub } = supabase.storage.from("item-images").getPublicUrl(path);
+
+  const { error: upsertError } = await supabase.from("item_catalog").upsert({
+    item_key: key,
+    display_name: itemName.trim(),
+    image_path: path,
+    image_url: pub.publicUrl,
+    updated_at: new Date().toISOString(),
+    updated_by: updatedBy,
+  });
+  if (upsertError) throw new Error(`catalog_upsert_failed: ${upsertError.message}`);
+
+  return { itemKey: key, imageUrl: pub.publicUrl };
+}
+
+async function deleteItemImage(supabase: ReturnType<typeof createClient>, rawKey: string) {
+  const key = itemKey(rawKey);
+  const { data: row } = await supabase.from("item_catalog").select("image_path").eq("item_key", key).maybeSingle();
+  if (row?.image_path) {
+    await supabase.storage.from("item-images").remove([row.image_path]);
+  }
+  const { error } = await supabase.from("item_catalog").delete().eq("item_key", key);
+  if (error) throw new Error(`catalog_delete_failed: ${error.message}`);
+}
+
 // --- HTTP handler -----------------------------------------------------
 
 // The site (kitchanatha.github.io) calling this function (*.supabase.co) is a cross-origin
@@ -551,6 +645,38 @@ Deno.serve(async (req) => {
       const token = await getAccessToken();
       const result = await captureGuildStats(token, clean);
       return jsonResponse(result);
+    }
+
+    if (body.action === "upload_item_image") {
+      const { itemName, imageBase64, contentType, adminIgn, botSecret, discordUserId } = body;
+      const authorized = await isAuthorizedForCatalog(supabase, { adminIgn, botSecret });
+      if (!authorized) {
+        return jsonResponse({ error: "not_authorized" }, 403);
+      }
+      if (!itemName || typeof itemName !== "string" || !imageBase64 || typeof imageBase64 !== "string") {
+        return jsonResponse({ error: "invalid_request" }, 400);
+      }
+      const updatedBy = botSecret ? `discord:${discordUserId ?? "unknown"}` : `web:${adminIgn}`;
+      const result = await uploadItemImage(supabase, {
+        itemName,
+        imageBase64,
+        contentType: typeof contentType === "string" ? contentType : "image/png",
+        updatedBy,
+      });
+      return jsonResponse(result);
+    }
+
+    if (body.action === "delete_item_image") {
+      const { itemKey: rawKey, adminIgn, botSecret } = body;
+      const authorized = await isAuthorizedForCatalog(supabase, { adminIgn, botSecret });
+      if (!authorized) {
+        return jsonResponse({ error: "not_authorized" }, 403);
+      }
+      if (!rawKey || typeof rawKey !== "string") {
+        return jsonResponse({ error: "invalid_request" }, 400);
+      }
+      await deleteItemImage(supabase, rawKey);
+      return jsonResponse({ deleted: true });
     }
 
     return jsonResponse({ error: "unknown_action" }, 400);

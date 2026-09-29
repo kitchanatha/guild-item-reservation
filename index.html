@@ -51,6 +51,15 @@
       </div>
 
       <div class="supabase-config">
+        <h3>Item Catalog (name + image)</h3>
+        <input type="file" id="item-catalog-files" accept="image/*" multiple>
+        <button onclick="uploadItemCatalogFiles()">⬆️ Upload Selected (filename = item name)</button>
+        <p id="item-catalog-upload-status" class="hint"></p>
+        <ul id="item-catalog-list" class="timer-admins-list"></ul>
+        <p class="hint">Also uploadable from Discord via /upload_item_image. Both write to the same catalog.</p>
+      </div>
+
+      <div class="supabase-config">
         <h3>Discord Item Queue</h3>
         <div class="queue-tabs">
           <button id="queue-tab-card" class="queue-tab-btn active" onclick="switchQueueTab('Card')">คิวการ์ด</button>

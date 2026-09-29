@@ -431,6 +431,7 @@ function setupAdminTrigger() {
         if (actions && !actions.classList.contains('hidden')) {
           loadTimerAdmins();
           loadDiscordQueue();
+          loadItemCatalog();
         }
       }
     });
@@ -521,6 +522,126 @@ async function removeTimerAdmin(ign) {
   await loadTimerAdmins();
 }
 window.removeTimerAdmin = removeTimerAdmin;
+
+// --- Item catalog (name + image, uploaded here or from Discord via /upload_item_image —
+// both write to the same item_catalog table/item-images bucket through queue-bridge) ---
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result; // "data:<mime>;base64,<data>"
+      const comma = result.indexOf(',');
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadItemCatalogFiles() {
+  const input = getEl('item-catalog-files');
+  const statusEl = getEl('item-catalog-upload-status');
+  const files = input && input.files ? Array.from(input.files) : [];
+  if (files.length === 0) return alert('Choose one or more image files first.');
+
+  const adminIgn = getEl('global-ign') ? getEl('global-ign').value.trim() : '';
+  if (!adminIgn) return alert("Enter your IGN at the top first — it's checked against the timer-admin list.");
+
+  let done = 0;
+  for (const file of files) {
+    if (statusEl) statusEl.textContent = `Uploading ${done + 1}/${files.length}: ${file.name}...`;
+    try {
+      const itemName = file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim();
+      const imageBase64 = await fileToBase64(file);
+      await callQueueBridge({
+        action: 'upload_item_image',
+        itemName,
+        imageBase64,
+        contentType: file.type || 'image/png',
+        adminIgn,
+      });
+      done++;
+    } catch (err) {
+      if (statusEl) statusEl.textContent = `❌ Failed on ${file.name} (${done}/${files.length} done): ${err.message}`;
+      await loadItemCatalog();
+      return;
+    }
+  }
+  if (statusEl) statusEl.textContent = `✅ Uploaded ${done}/${files.length} item(s).`;
+  input.value = '';
+  await loadItemCatalog();
+}
+window.uploadItemCatalogFiles = uploadItemCatalogFiles;
+
+async function loadItemCatalog() {
+  const list = getEl('item-catalog-list');
+  if (!list) return;
+
+  if (!syncEnabled || !supabase) {
+    list.innerHTML = '<li>Item catalog requires Cloud Sync (Supabase) to be enabled.</li>';
+    return;
+  }
+
+  const { data, error } = await supabase.from('item_catalog').select('*').order('display_name');
+  if (error) {
+    console.error('Failed to load item catalog:', error);
+    list.innerHTML = '<li>Failed to load list.</li>';
+    return;
+  }
+  renderItemCatalogList(data || []);
+}
+
+function renderItemCatalogList(items) {
+  const list = getEl('item-catalog-list');
+  if (!list) return;
+
+  list.innerHTML = '';
+  if (items.length === 0) {
+    list.innerHTML = '<li>No items uploaded yet.</li>';
+    return;
+  }
+
+  items.forEach((item) => {
+    const li = document.createElement('li');
+
+    const img = document.createElement('img');
+    img.src = item.image_url;
+    img.alt = item.display_name;
+    img.className = 'item-catalog-thumb';
+    li.appendChild(img);
+
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'timer-admin-name';
+    nameSpan.textContent = item.display_name;
+    li.appendChild(nameSpan);
+
+    const actions = document.createElement('span');
+    actions.className = 'timer-admin-actions';
+    const removeBtn = document.createElement('button');
+    removeBtn.textContent = '🗑️';
+    removeBtn.title = 'Remove';
+    removeBtn.onclick = () => removeItemCatalogEntry(item.item_key, item.display_name);
+    actions.appendChild(removeBtn);
+    li.appendChild(actions);
+
+    list.appendChild(li);
+  });
+}
+
+async function removeItemCatalogEntry(itemKey, displayName) {
+  const adminIgn = getEl('global-ign') ? getEl('global-ign').value.trim() : '';
+  if (!adminIgn) return alert("Enter your IGN at the top first — it's checked against the timer-admin list.");
+  if (!confirm(`Remove "${displayName}" from the item catalog?`)) return;
+
+  try {
+    await callQueueBridge({ action: 'delete_item_image', itemKey, adminIgn });
+    await loadItemCatalog();
+  } catch (err) {
+    alert('Failed to remove: ' + err.message);
+  }
+}
+window.removeItemCatalogEntry = removeItemCatalogEntry;
 
 async function editTimerAdmin(oldIgn) {
   if (!supabase) return;

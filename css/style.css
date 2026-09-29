@@ -640,6 +640,15 @@ button:disabled {
   padding: 2px 6px;
 }
 
+.item-catalog-thumb {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  border-radius: 4px;
+  background: #1a1a1a;
+  flex-shrink: 0;
+}
+
 .timer-admin-add-row {
   display: flex;
   gap: 8px;
