@@ -41,6 +41,22 @@ alter table public.timer_admins enable row level security;
 -- No policies -> anon/authenticated get zero direct table access; all reads
 -- and writes go through the security definer functions below.
 
+-- Matches an IGN against the admin list forgivingly: case-insensitive, trims
+-- surrounding whitespace, strips zero-width characters that sneak in from
+-- copy/paste (common with names typed on phones or pasted from Discord/LINE
+-- and invisible on screen), and Unicode-normalizes so visually identical Thai
+-- text compares equal even if it was composed differently. Without this, an
+-- admin whose IGN was added to the list could still get "Only designated
+-- timer admins..." when starting the timer themselves, because the two
+-- strings looked the same but weren't byte-identical.
+create or replace function public.normalize_ign_for_match(p text)
+returns text
+language sql
+immutable
+as $$
+  select lower(normalize(btrim(translate(coalesce(p, ''), chr(8203) || chr(8204) || chr(8205) || chr(65279), '')), NFC));
+$$;
+
 create or replace function public.list_timer_admins()
 returns table(ign text, added_at timestamptz)
 language sql
@@ -122,7 +138,8 @@ begin
   end if;
 
   if p_started_by is null or btrim(p_started_by) = '' or not exists (
-    select 1 from public.timer_admins where ign = btrim(p_started_by)
+    select 1 from public.timer_admins
+    where public.normalize_ign_for_match(ign) = public.normalize_ign_for_match(p_started_by)
   ) then
     raise exception 'Only designated timer admins can start the timer.';
   end if;
