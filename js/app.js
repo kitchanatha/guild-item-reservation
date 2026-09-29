@@ -13,6 +13,7 @@ let reservations = {};
 let supabase = null;
 let syncEnabled = false;
 let renderTimeout = null;
+let persistConfigTimeout = null;
 let isAppEnabled = false;
 let adminClickCount = 0;
 let enabledPages = new Set();
@@ -335,16 +336,30 @@ function applyRemoteConfig(configStr) {
 
 async function persistConfig() {
   if (syncEnabled && supabase) {
-    const config = { 
-      totalItems, 
-      itemsPerPage, 
-      itemPrefix 
+    const config = {
+      totalItems,
+      itemsPerPage,
+      itemPrefix
     };
     const { error } = await supabase
       .from('reservations')
       .upsert({ item_id: 0, ign: JSON.stringify(config) });
     if (error) console.error("Sync config failed:", error);
   }
+}
+
+// Total Items / Total Pages fire on every keystroke so the admin gets instant local
+// feedback while typing, but persisting each intermediate value would broadcast it live to
+// every other open browser tab via the realtime subscription — e.g. typing "440" digit by
+// digit briefly persists "44" (11 pages at 4/page), visible to everyone else until the
+// admin finishes typing. Debouncing the actual network write (not the local render) fixes
+// that without losing the live-preview feel for the person typing.
+function schedulePersistConfig() {
+  if (persistConfigTimeout) clearTimeout(persistConfigTimeout);
+  persistConfigTimeout = setTimeout(() => {
+    persistConfigTimeout = null;
+    persistConfig();
+  }, 600);
 }
 
 async function persistReservation(itemId, ign) {
@@ -872,7 +887,7 @@ async function updateItemPrefix() {
     renderItems();
     renderSummary();
 
-    await persistConfig();
+    schedulePersistConfig();
   }
 }
 window.updateItemPrefix = updateItemPrefix;
@@ -894,7 +909,7 @@ async function updateTotalItems() {
     renderItems();
     renderSummary();
 
-    await persistConfig();
+    schedulePersistConfig();
   }
 }
 window.updateTotalItems = updateTotalItems;
@@ -916,7 +931,7 @@ async function updateTotalPages() {
     renderItems();
     renderSummary();
 
-    await persistConfig();
+    schedulePersistConfig();
   }
 }
 window.updateTotalPages = updateTotalPages;
