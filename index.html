@@ -51,12 +51,12 @@
       </div>
 
       <div class="supabase-config">
-        <h3>Item Catalog (name + image)</h3>
+        <h3>Item Catalog (auto-read from auction pages)</h3>
         <input type="file" id="item-catalog-files" accept="image/*" multiple>
-        <button onclick="uploadItemCatalogFiles()">⬆️ Upload Selected (filename = item name)</button>
+        <button onclick="uploadItemCatalogFiles()">⬆️ Upload Auction Page Screenshot(s)</button>
         <p id="item-catalog-upload-status" class="hint"></p>
         <ul id="item-catalog-list" class="timer-admins-list"></ul>
-        <p class="hint">Also uploadable from Discord via /upload_item_image. Both write to the same catalog.</p>
+        <p class="hint">Upload one screenshot per Guild Auction page (up to 4 items each) — names and icons are read automatically. Also uploadable from Discord via /upload_auction_page. Both write to the same catalog.</p>
       </div>
 
       <div class="supabase-config">

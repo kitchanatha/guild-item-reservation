@@ -523,8 +523,9 @@ async function removeTimerAdmin(ign) {
 }
 window.removeTimerAdmin = removeTimerAdmin;
 
-// --- Item catalog (name + image, uploaded here or from Discord via /upload_item_image —
-// both write to the same item_catalog table/item-images bucket through queue-bridge) ---
+// --- Item catalog (name + icon, extracted automatically from an uploaded auction-page
+// screenshot — here or from Discord via /upload_auction_page — both write to the same
+// item_catalog table/item-images bucket through queue-bridge) ---
 
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
@@ -539,36 +540,41 @@ function fileToBase64(file) {
   });
 }
 
+// Upload one or more full auction-page screenshots (like the game's own Guild Auction list —
+// up to 4 items per page). queue-bridge asks Claude to read each row's item name off the
+// image and records it against that row's fixed crop rectangle — nothing to type here.
 async function uploadItemCatalogFiles() {
   const input = getEl('item-catalog-files');
   const statusEl = getEl('item-catalog-upload-status');
   const files = input && input.files ? Array.from(input.files) : [];
-  if (files.length === 0) return alert('Choose one or more image files first.');
+  if (files.length === 0) return alert('Choose one or more auction-page screenshots first.');
 
   const adminIgn = getEl('global-ign') ? getEl('global-ign').value.trim() : '';
   if (!adminIgn) return alert("Enter your IGN at the top first — it's checked against the timer-admin list.");
 
-  let done = 0;
+  let pagesDone = 0;
+  let itemsFound = 0;
   for (const file of files) {
-    if (statusEl) statusEl.textContent = `Uploading ${done + 1}/${files.length}: ${file.name}...`;
+    if (statusEl) statusEl.textContent = `Reading page ${pagesDone + 1}/${files.length}: ${file.name}...`;
     try {
-      const itemName = file.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim();
       const imageBase64 = await fileToBase64(file);
-      await callQueueBridge({
-        action: 'upload_item_image',
-        itemName,
+      const result = await callQueueBridge({
+        action: 'upload_auction_page',
         imageBase64,
         contentType: file.type || 'image/png',
         adminIgn,
       });
-      done++;
+      itemsFound += (result.items || []).length;
+      pagesDone++;
     } catch (err) {
-      if (statusEl) statusEl.textContent = `❌ Failed on ${file.name} (${done}/${files.length} done): ${err.message}`;
+      if (statusEl) {
+        statusEl.textContent = `❌ Failed on ${file.name} (${pagesDone}/${files.length} page(s) done, ${itemsFound} item(s) found so far): ${err.message}`;
+      }
       await loadItemCatalog();
       return;
     }
   }
-  if (statusEl) statusEl.textContent = `✅ Uploaded ${done}/${files.length} item(s).`;
+  if (statusEl) statusEl.textContent = `✅ Processed ${pagesDone}/${files.length} page(s), found ${itemsFound} item(s).`;
   input.value = '';
   await loadItemCatalog();
 }
@@ -592,6 +598,38 @@ async function loadItemCatalog() {
   renderItemCatalogList(data || []);
 }
 
+// When crop_x/crop_y/crop_size are set, image_url is a full auction-page screenshot shared by
+// several catalog rows, not a picture of just this item — draw the crop rectangle onto a small
+// canvas rather than showing the whole page. Falls back to the raw image (e.g. cross-origin
+// canvas read blocked, or this is a standalone icon with no crop_* set) so a thumbnail always
+// shows something rather than breaking.
+const THUMB_SIZE = 32;
+function renderCatalogThumb(imgEl, item) {
+  if (item.crop_x == null || item.crop_y == null || !item.crop_size) {
+    imgEl.src = item.image_url;
+    return;
+  }
+  const source = new Image();
+  source.crossOrigin = 'anonymous';
+  source.onload = () => {
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = THUMB_SIZE;
+      canvas.height = THUMB_SIZE;
+      canvas.getContext('2d').drawImage(
+        source,
+        item.crop_x, item.crop_y, item.crop_size, item.crop_size,
+        0, 0, THUMB_SIZE, THUMB_SIZE
+      );
+      imgEl.src = canvas.toDataURL();
+    } catch (err) {
+      imgEl.src = item.image_url;
+    }
+  };
+  source.onerror = () => { imgEl.src = item.image_url; };
+  source.src = item.image_url;
+}
+
 function renderItemCatalogList(items) {
   const list = getEl('item-catalog-list');
   if (!list) return;
@@ -606,9 +644,9 @@ function renderItemCatalogList(items) {
     const li = document.createElement('li');
 
     const img = document.createElement('img');
-    img.src = item.image_url;
     img.alt = item.display_name;
     img.className = 'item-catalog-thumb';
+    renderCatalogThumb(img, item);
     li.appendChild(img);
 
     const nameSpan = document.createElement('span');

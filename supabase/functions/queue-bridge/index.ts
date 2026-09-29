@@ -12,23 +12,33 @@
 //     -> { characterName, cooldownUntil }
 //     adminIgn must be in the timer_admins table (same allowlist "who can start timer" already
 //     uses) — checked server-side here, not just gated by the site's UI.
+//   { action: "upload_auction_page", imageBase64, contentType, adminIgn? | botSecret? }
+//     -> { items: [{ itemKey, displayName }], pageImageUrl }
+//     The main way the item catalog gets filled: admin uploads one screenshot of the game's
+//     own Guild Auction list (up to 4 items stacked top to bottom, matching its fixed layout),
+//     and this asks Claude (ANTHROPIC_API_KEY) to read each row's item name off the image —
+//     no typing, no manual cropping. The page image is stored once; each detected item gets a
+//     item_catalog row pointing at that same image plus its row's fixed crop_x/crop_y/crop_size
+//     (see ROW_CROPS below), and the frontend crops it client-side at display time.
 //   { action: "upload_item_image", itemName, imageBase64, contentType, adminIgn? | botSecret? }
 //     -> { itemKey, imageUrl }
-//     Shared by the website's admin panel (adminIgn, checked against timer_admins like above)
-//     and the Discord bot's /upload_item_image command (botSecret, checked against
-//     BOT_SHARED_SECRET below — the bot already gates the command to admin Discord roles before
-//     ever calling this). Stores the image in the item-images Storage bucket and upserts
-//     item_catalog; both writes use this function's service-role client, so browsers and the
-//     bot never get direct write access to either (see supabase-item-catalog.sql).
+//     Manual fallback for a single already-cropped icon + explicit name (e.g. to fix a
+//     misread name, or add an item that isn't on a standard 4-row auction page). Shared by the
+//     website's admin panel (adminIgn, checked against timer_admins like above) and the Discord
+//     bot's /upload_item_image command (botSecret, checked against BOT_SHARED_SECRET below —
+//     the bot already gates the command to admin Discord roles before ever calling this).
 //   { action: "delete_item_image", itemKey, adminIgn }
 //     -> { deleted: true }
+//   All writes (both upload actions and delete) use this function's service-role client, so
+//   browsers and the bot never get direct write access to item_catalog or the item-images
+//   bucket (see supabase-item-catalog.sql).
 //
 // One-time setup:
-//   supabase secrets set GOOGLE_SERVICE_ACCOUNT_EMAIL=... GOOGLE_PRIVATE_KEY=... GOOGLE_SHEET_ID=... BOT_SHARED_SECRET=...
+//   supabase secrets set GOOGLE_SERVICE_ACCOUNT_EMAIL=... GOOGLE_PRIVATE_KEY=... GOOGLE_SHEET_ID=... BOT_SHARED_SECRET=... ANTHROPIC_API_KEY=...
 //   supabase functions deploy queue-bridge --no-verify-jwt
 //   (--no-verify-jwt: called with the public anon key like every other RPC here; the real
 //   authorization is the timer_admins/BOT_SHARED_SECRET check below, not Supabase Auth)
-//   Also run supabase-item-catalog.sql once, before using the two actions above.
+//   Also run supabase-item-catalog.sql once, before using the actions above.
 
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
@@ -36,6 +46,7 @@ const GOOGLE_SHEET_ID = Deno.env.get("GOOGLE_SHEET_ID") ?? "";
 const GOOGLE_SERVICE_ACCOUNT_EMAIL = Deno.env.get("GOOGLE_SERVICE_ACCOUNT_EMAIL") ?? "";
 const GOOGLE_PRIVATE_KEY = (Deno.env.get("GOOGLE_PRIVATE_KEY") ?? "").replace(/\\n/g, "\n");
 const BOT_SHARED_SECRET = Deno.env.get("BOT_SHARED_SECRET") ?? "";
+const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 
 const SHEETS = {
   members: "Members",
@@ -550,12 +561,140 @@ async function uploadItemImage(
     display_name: itemName.trim(),
     image_path: path,
     image_url: pub.publicUrl,
+    // Always a standalone, already-cropped icon on this path — null out any crop_* left over
+    // from a previous upload_auction_page upsert of the same item, or its icon would get
+    // wrongly cropped as if image_url were still a full page screenshot.
+    crop_x: null,
+    crop_y: null,
+    crop_size: null,
     updated_at: new Date().toISOString(),
     updated_by: updatedBy,
   });
   if (upsertError) throw new Error(`catalog_upsert_failed: ${upsertError.message}`);
 
   return { itemKey: key, imageUrl: pub.publicUrl };
+}
+
+// --- auction-page upload (reads item names automatically via Claude vision) ---------------
+
+// Fixed pixel layout of the game's own Guild Auction list — measured directly from real
+// screenshots (see conversation history): 4 rows, each icon 150x150 at x=390, rows 160px
+// apart starting at y=285. This is a UI constant of that screen, not something to detect per
+// image, so cropping never needs an image-processing library here — the frontend crops this
+// same rectangle out of the stored page screenshot at display time.
+const ROW_CROPS = [
+  { row: 1, x: 390, y: 285 },
+  { row: 2, x: 390, y: 445 },
+  { row: 3, x: 390, y: 605 },
+  { row: 4, x: 390, y: 765 },
+];
+const CROP_SIZE = 150;
+
+async function extractItemsFromPage(imageBase64: string, mediaType: string): Promise<{ row: number; name: string }[]> {
+  if (!ANTHROPIC_API_KEY) throw new Error("anthropic_api_key_not_configured");
+
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 512,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "image", source: { type: "base64", media_type: mediaType, data: imageBase64 } },
+            {
+              type: "text",
+              text:
+                "This is a screenshot of an in-game auction listing with up to 4 item rows stacked top to bottom. " +
+                "Each row shows an item icon on the left and the item's name in colored text to its right. " +
+                "A chat/notification banner sometimes overlaps the very top of the screen — ignore it, it is not an item row. " +
+                "Respond with ONLY a JSON array (no markdown, no explanation), one entry per visible item row, " +
+                'in top-to-bottom order: [{"row": 1, "name": "..."}, ...]. ' +
+                "row is the 1-based position counting from the top of the visible item list (1-4), and name is exactly the item name text shown.",
+            },
+          ],
+        },
+      ],
+    }),
+  });
+
+  if (!res.ok) throw new Error(`anthropic_api_failed: ${res.status} ${await res.text()}`);
+  const data = await res.json();
+  const text = data?.content?.[0]?.text ?? "";
+  const match = text.match(/\[[\s\S]*\]/);
+  if (!match) throw new Error("could_not_parse_vision_response");
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(match[0]);
+  } catch {
+    throw new Error("could_not_parse_vision_response");
+  }
+  if (!Array.isArray(parsed)) throw new Error("could_not_parse_vision_response");
+
+  return parsed.filter(
+    (r): r is { row: number; name: string } =>
+      !!r && typeof r.row === "number" && typeof r.name === "string" && r.name.trim().length > 0
+  );
+}
+
+async function uploadAuctionPage(
+  supabase: ReturnType<typeof createClient>,
+  { imageBase64, contentType, updatedBy }: { imageBase64: string; contentType: string; updatedBy: string }
+) {
+  const items = await extractItemsFromPage(imageBase64, contentType);
+  if (items.length === 0) throw new Error("no_items_detected");
+
+  const ext = CONTENT_TYPE_EXT[contentType] ?? "png";
+  const pagePath = `pages/${crypto.randomUUID()}.${ext}`;
+  const bytes = base64ToBytes(imageBase64);
+
+  const { error: uploadError } = await supabase.storage
+    .from("item-images")
+    .upload(pagePath, bytes, { contentType, upsert: true });
+  if (uploadError) throw new Error(`storage_upload_failed: ${uploadError.message}`);
+
+  const { data: pub } = supabase.storage.from("item-images").getPublicUrl(pagePath);
+  const now = new Date().toISOString();
+
+  const results: { itemKey: string; displayName: string }[] = [];
+  const seenRows = new Set<number>();
+  for (const item of items) {
+    if (seenRows.has(item.row)) continue; // guard against a duplicate row in the model's response
+    seenRows.add(item.row);
+
+    const crop = ROW_CROPS.find((c) => c.row === item.row);
+    if (!crop) continue; // row outside 1-4 — not a real row, ignore rather than fail the whole upload
+
+    const displayName = item.name.trim();
+    const key = itemKey(displayName);
+    if (!key) continue;
+
+    const { error: upsertError } = await supabase.from("item_catalog").upsert({
+      item_key: key,
+      display_name: displayName,
+      image_path: pagePath,
+      image_url: pub.publicUrl,
+      crop_x: crop.x,
+      crop_y: crop.y,
+      crop_size: CROP_SIZE,
+      updated_at: now,
+      updated_by: updatedBy,
+    });
+    if (upsertError) throw new Error(`catalog_upsert_failed: ${upsertError.message}`);
+
+    results.push({ itemKey: key, displayName });
+  }
+
+  if (results.length === 0) throw new Error("no_valid_items_after_filtering");
+
+  return { items: results, pageImageUrl: pub.publicUrl };
 }
 
 async function deleteItemImage(supabase: ReturnType<typeof createClient>, rawKey: string) {
@@ -644,6 +783,24 @@ Deno.serve(async (req) => {
       }
       const token = await getAccessToken();
       const result = await captureGuildStats(token, clean);
+      return jsonResponse(result);
+    }
+
+    if (body.action === "upload_auction_page") {
+      const { imageBase64, contentType, adminIgn, botSecret, discordUserId } = body;
+      const authorized = await isAuthorizedForCatalog(supabase, { adminIgn, botSecret });
+      if (!authorized) {
+        return jsonResponse({ error: "not_authorized" }, 403);
+      }
+      if (!imageBase64 || typeof imageBase64 !== "string") {
+        return jsonResponse({ error: "invalid_request" }, 400);
+      }
+      const updatedBy = botSecret ? `discord:${discordUserId ?? "unknown"}` : `web:${adminIgn}`;
+      const result = await uploadAuctionPage(supabase, {
+        imageBase64,
+        contentType: typeof contentType === "string" ? contentType : "image/png",
+        updatedBy,
+      });
       return jsonResponse(result);
     }
 

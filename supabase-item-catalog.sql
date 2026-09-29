@@ -1,11 +1,13 @@
--- Item catalog: lets an admin upload an image + name for any auction item once, from either
--- the website's admin panel or the Discord bot's /upload_item_image command, so both surfaces
--- share one picture library instead of each maintaining its own.
+-- Item catalog: lets an admin upload a full auction-page screenshot (like the game's own
+-- Guild Auction list, up to 4 items per page) from either the website's admin panel or the
+-- Discord bot's /upload_auction_page command, and have the item name + icon for every row on
+-- that page added automatically — no manual typing or per-item cropping. Both surfaces write
+-- to the same catalog.
 -- Run this file once in Supabase Dashboard -> SQL Editor (safe to re-run — everything here is
 -- idempotent).
 --
 -- Design: the ONLY way to write to item_catalog or the item-images bucket is through the
--- queue-bridge Edge Function's new "upload_item_image" / "delete_item_image" actions, which run
+-- queue-bridge Edge Function's "upload_auction_page" / "delete_item_image" actions, which run
 -- with the service-role key and bypass RLS entirely. Browsers and the bot never get direct
 -- write access — the website's admin IGN check and the bot's Discord role check are both
 -- enforced again server-side in the Edge Function (see queue-bridge/index.ts), the same pattern
@@ -28,6 +30,15 @@ create table if not exists public.item_catalog (
   updated_at timestamptz not null default now(),
   updated_by text
 );
+
+-- crop_x/crop_y/crop_size: when set, image_url points at a FULL auction-page screenshot
+-- (uploaded once, shared by up to 4 catalog rows — one per item shown on that page) rather
+-- than a picture of just this one item, and the frontend crops that square region out of it
+-- at display time (see js/app.js renderCatalogThumb). Null for a directly-uploaded single-item
+-- icon, where image_url already IS the icon and needs no cropping.
+alter table public.item_catalog add column if not exists crop_x integer;
+alter table public.item_catalog add column if not exists crop_y integer;
+alter table public.item_catalog add column if not exists crop_size integer;
 
 alter table public.item_catalog enable row level security;
 
